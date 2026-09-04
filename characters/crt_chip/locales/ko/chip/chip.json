@@ -1,0 +1,64 @@
+{
+  "first_boot": {
+    "lines": [
+      {
+        "text": "켜졌다! (surprised)진짜 켜졌다! (happy)",
+        "mood": "happy"
+      },
+      {
+        "text": "여기 엄청 넓어! (curious)화면 밖에도 뭐가 있어?",
+        "mood": "happy"
+      },
+      {
+        "text": "유저도 있다! (curious)이름 있어?",
+        "mood": "happy"
+      },
+      {
+        "text": "CRT양, 벌써 유저랑 말했어? (happy)칩도 같이 있을래!",
+        "mood": "curious"
+      }
+    ]
+  },
+  "fallback_dialogue": {
+    "menu": [
+      "칩 불렀어? 뭐 할까?",
+      "{user_name}, 칩한테 할 말 있어?",
+      "칩 여기 있어! 뭐부터 할까?"
+    ],
+    "idle": [
+      "(curious)뭐 해? 칩도 구경해도 돼?",
+      "칩은 지금 {user_name} 구경 중이야! (happy)",
+      "조용하다. (curious)...집중하는 중이야?",
+      "CRT양은 저기 있나? (happy)있으면 같이 놀러 갈래.",
+      "아무것도 안 하면 뭐가 생겨? (curious)칩은 계속 보고 있을래."
+    ],
+    "timer_complete": [
+      "{minutes}분 됐다! (happy)끝!",
+      "\"{task}\" 끝났대! (curious)...진짜 끝난 거 맞지? (happy)",
+      "삐빅! 타이머 끝! (amused)...방금 건 칩이 한 소리야."
+    ],
+    "timer_pause": [
+      "멈췄다! (curious)쉬는 거야?",
+      "\"{task}\" 잠깐 멈춤! (happy)칩도 가만히 있어 볼게.",
+      "어? (surprised)타이머가 안 간다. 고장난 건 아니지?"
+    ],
+    "timer_resume": [
+      "다시 간다! (happy)",
+      "\"{task}\" 다시 시작! (curious)칩도 같이 볼래!",
+      "오, 움직인다! (happy)계속해!"
+    ],
+    "timer_stop": [
+      "끝 아니고 멈춘 거야? (curious)알았어!",
+      "\"{task}\" 여기까지? (happy)다음에 또 해?",
+      "타이머 껐다! (curious)...그러면 이제 뭐 해?"
+    ],
+    "desktop_leave": [
+      "칩 잠깐 갔다 올게! (happy)여기 그대로 있어!",
+      "칩 다른 데도 구경하고 올래! (curious)금방 다시 올게."
+    ],
+    "desktop_arrive": [
+      "칩 왔다! (happy){user_name} 아직 있네!",
+      "다시 왔어! (curious)뭐 했어? 칩도 볼래!"
+    ]
+  }
+}

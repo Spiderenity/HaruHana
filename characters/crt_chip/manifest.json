@@ -1,0 +1,21 @@
+{
+  "id": "crt_chip",
+  "display_name": "CRT양 & 칩",
+  "description": "CRT양과 칩으로 구성된 기본 데스크탑 동반자 캐릭터 팩.",
+  "default_language": "ko",
+  "supported_languages": [
+    "ko"
+  ],
+  "characters": [
+    {
+      "id": "crt",
+      "profile_file": "crt/profile.json",
+      "dialogue_file": "crt/crt.json"
+    },
+    {
+      "id": "chip",
+      "profile_file": "chip/profile.json",
+      "dialogue_file": "chip/chip.json"
+    }
+  ]
+}

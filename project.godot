@@ -1,0 +1,37 @@
+config_version=5
+
+[application]
+
+config/name="HaruHana"
+config/version="0.1.0-alpha.1"
+run/main_scene="res://system/scenes/launch_router.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+config/icon="res://assets/icon/icon.svg"
+
+[display]
+
+window/size/viewport_width=400
+window/size/viewport_height=600
+window/size/borderless=true
+window/size/always_on_top=false
+window/size/transparent=true
+window/size/no_focus=false
+window/subwindows/embed_subwindows=false
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/per_pixel_transparency/allowed=true
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://system/addons/windows_mouse_passthrough/plugin.cfg")
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+rendering_device/driver.windows="d3d12"
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+viewport/transparent_background=true

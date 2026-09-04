@@ -1,0 +1,36 @@
+.godot/
+.import/
+.mono/
+export_credentials.cfg
+
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+/system/services/update/native/bin/
+/system/services/update/native/obj/
+*.pdb
+
+/하루하나.exe
+/캐릭터 크리에이터.exe
+/말풍선 크리에이터.exe
+/*.pck
+/*.zip
+
+.env
+.env.*
+!.env.example
+
+*.log
+*.tmp
+*.temp
+*.bak
+*~
+
+.DS_Store
+Thumbs.db
+desktop.ini

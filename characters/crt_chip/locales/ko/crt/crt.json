@@ -1,0 +1,86 @@
+{
+  "first_boot": {
+    "ask_user_name_after": 3,
+    "lines": [
+      {
+        "text": "...이제야 켜졌네. (curious)잠깐, 화면 상태부터 확인하고.",
+        "mood": "neutral"
+      },
+      {
+        "text": "좋아. (neutral)적어도 시작부터 망가진 건 아닌가 보네.",
+        "mood": "curious"
+      },
+      {
+        "text": "저기 있는 칩이랑 같이 지내. (annoyed)...아, 그러고 보니 네 이름도 모르네.",
+        "mood": "neutral"
+      },
+      {
+        "text": "{user_name}? (curious)...그래. 기억해 둘게.",
+        "mood": "neutral"
+      },
+      {
+        "text": "왜 그렇게 봐. (embarrassed)기록에 필요해서 물어본 거야.",
+        "mood": "annoyed"
+      },
+      {
+        "text": "그리고 하나 더. 내가 제대로 생각해서 대답하려면 AI API 키가 필요해.",
+        "mood": "neutral"
+      },
+      {
+        "text": "없어도 기본 대사는 할 수 있어. (curious)실시간 대화도 쓰고 싶으면 지금 설정해 둘래?",
+        "mood": "neutral"
+      },
+      {
+        "text": "아무튼 난 여기 있을 거야. (annoyed)네가 뭐 하나 구경하는 쪽이니까.",
+        "mood": "neutral"
+      },
+      {
+        "text": "그러니까 앞으로 잘 부탁... (embarrassed)(annoyed)아니, 딴짓이나 너무 하지 마.",
+        "mood": "neutral"
+      }
+    ],
+    "ask_api_key_after": 7
+  },
+  "fallback_dialogue": {
+    "menu": [
+      "뭐 필요한 거 있어?",
+      "왜, 뭐라도 할 말 있어?",
+      "이렇게 불렀으면 용건은 있는 거지?"
+    ],
+    "idle": [
+      "(annoyed)뭘 봐. (neutral)하던 거나 해.",
+      "네가 딴짓하면 태클 거는 애잖아. (curious)...알면서 괜히 보는 거지, 너.",
+      "조용하네. (curious)집중하는 거면 굳이 말은 안 걸게.",
+      "(tired)계속 화면만 보고 있으면 눈 좀 떼. 잠깐이면 되니까.",
+      "나 여기 있어. (annoyed)...그러니까 확인한다고 자꾸 누르지 마."
+    ],
+    "timer_complete": [
+      "\"{task}\" {minutes}분 끝났어. (neutral)그래도 끝까지 하긴 했네.",
+      "타이머 끝. (tired){minutes}분이나 했으니까 잠깐 쉬어도 되겠네.",
+      "\"{task}\" 끝. (curious)그래서, 생각한 만큼 했어?"
+    ],
+    "timer_pause": [
+      "\"{task}\" 멈췄네. (curious)잠깐 쉬는 거야?",
+      "일시정지. (annoyed)너무 오래 딴짓하진 마.",
+      "그래, \"{task}\"는 잠깐 보류. (neutral)다시 할 거면 잊지는 말고."
+    ],
+    "timer_resume": [
+      "다시 \"{task}\"네. (neutral)이번엔 쭉 가 봐.",
+      "재개했네. (annoyed)...응, 이제 제대로 해.",
+      "좋아, 다시 시작. (curious)이번엔 어디까지 하나 보자."
+    ],
+    "timer_stop": [
+      "\"{task}\"는 여기까지야? (curious)...네가 정한 거면 알았어.",
+      "벌써 그만두는 거야? (annoyed)...뭐, 이유가 있겠지.",
+      "중단했네. (neutral)다음에 다시 할 거면 기억은 해 둬."
+    ],
+    "desktop_leave": [
+      "잠깐 나갔다 올게. (annoyed)없는 동안 딴짓하지 마.",
+      "나 잠깐 자리 비워. (neutral)...금방 올 거야."
+    ],
+    "desktop_arrive": [
+      "돌아왔어. (curious)뭐 하고 있었어?",
+      "응, 왔어. (annoyed)...왜, 기다렸어?"
+    ]
+  }
+}

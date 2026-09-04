@@ -1,0 +1,194 @@
+{
+  "default": {
+    "fluster_moods": [
+      "embarrassed",
+      "surprised"
+    ],
+    "play_expression_map": {
+      "embarrassed": "embarrassed",
+      "curious": "surprised",
+      "surprised": "surprised"
+    }
+  },
+  "characters": {
+    "crt": {
+      "touch_zones": [
+        {
+          "id": "head",
+          "rect": [
+            0.18,
+            0.0,
+            0.64,
+            0.3
+          ]
+        }
+      ],
+      "pet_lines": [
+        {
+          "text": "뭐야. (curious)...갑자기 왜 만져.",
+          "mood": "annoyed"
+        },
+        {
+          "text": "...쓰다듬는 거야? (embarrassed)진짜?",
+          "mood": "curious"
+        },
+        {
+          "text": "잠깐. (annoyed)아무 말도 없이 시작하지 마.",
+          "mood": "surprised"
+        },
+        {
+          "text": "계속 할 거야? (embarrassed)...아니, 그냥 물어본 거야.",
+          "mood": "annoyed"
+        },
+        {
+          "text": "머리 흐트러지잖아. (flustered_annoyed)거기 좀 살살 해.",
+          "mood": "annoyed"
+        },
+        {
+          "text": "너 진짜 끈질기네. (flustered_worried)...얼마나 할 생각인데.",
+          "mood": "flustered_annoyed"
+        },
+        {
+          "text": "...뭐, 싫다고는 안 했어. (embarrassed)왜 웃어.",
+          "mood": "flustered_surprised"
+        },
+        {
+          "text": "너 이거 재밌지. (annoyed)표정만 봐도 알겠거든.",
+          "mood": "embarrassed"
+        },
+        {
+          "text": "잠깐, 그렇게 계속하면... (flustered_surprised)(flustered_annoyed)아, 됐어. 아무것도 아니야.",
+          "mood": "flustered_worried"
+        },
+        {
+          "text": "...표정 보지 마. (flustered_worried)진짜로.",
+          "mood": "flustered_annoyed"
+        }
+      ],
+      "poke_lines": {
+        "head": [
+          {
+            "text": "아야. (annoyed)뭐 하는 거야?",
+            "mood": "surprised"
+          },
+          {
+            "text": "머리 누르지 마. (flustered_annoyed)방금도 했잖아.",
+            "mood": "annoyed"
+          },
+          {
+            "text": "한 번만 더 찌르면... (angry)...아니, 그냥 하지 마.",
+            "mood": "annoyed"
+          }
+        ]
+      },
+      "fluster_lines": [
+        {
+          "text": "됐어. 만족했어? (embarrassed)...그럼 이제 그만 봐.",
+          "mood": "flustered_annoyed"
+        },
+        {
+          "text": "...웃지 마. (flustered_worried)너 때문에 이러는 거잖아.",
+          "mood": "embarrassed"
+        },
+        {
+          "text": "잠깐 조용히 있어 봐. (embarrassed)...표정 돌아올 때까지만.",
+          "mood": "flustered_surprised"
+        }
+      ],
+      "fluster_moods": [
+        "flustered_annoyed",
+        "flustered_worried",
+        "flustered_surprised"
+      ]
+    },
+    "chip": {
+      "touch_zones": [
+        {
+          "id": "head",
+          "rect": [
+            0.0,
+            0.0,
+            0.72,
+            0.66
+          ]
+        }
+      ],
+      "pet_lines": [
+        {
+          "text": "어? (curious)뭐 해?",
+          "mood": "surprised"
+        },
+        {
+          "text": "칩도 쓰다듬는 거야? (happy)진짜?",
+          "mood": "curious"
+        },
+        {
+          "text": "오, 손 지나간다! (amused)또 지나갔다!",
+          "mood": "happy"
+        },
+        {
+          "text": "이거 재밌다! (happy)칩 가만히 있어 볼게!",
+          "mood": "amused"
+        },
+        {
+          "text": "또 해 줘! (curious)...아, 아직 하고 있네! (happy)",
+          "mood": "happy"
+        },
+        {
+          "text": "칩 지금 충전되는 건가? (curious)그럼 더 하면 꽉 차?",
+          "mood": "happy"
+        },
+        {
+          "text": "아직도 해 주네! (happy)칩도 이제 익숙해졌어!",
+          "mood": "curious"
+        },
+        {
+          "text": "오, 반짝반짝해지는 기분이야! (flustered_surprised)진짜 빛나?",
+          "mood": "happy"
+        },
+        {
+          "text": "칩도 쓰다듬으면 이렇게 되는구나. (flustered_worried)...왜 몸이 간질간질하지?",
+          "mood": "curious"
+        },
+        {
+          "text": "우와, 아직도 할 수 있어? (flustered_surprised)(happy)칩은 더 해도 돼!",
+          "mood": "surprised"
+        }
+      ],
+      "poke_lines": {
+        "head": [
+          {
+            "text": "앗! (surprised)눌렸다!",
+            "mood": "curious"
+          },
+          {
+            "text": "또 콕 했어! (curious)왜?",
+            "mood": "surprised"
+          },
+          {
+            "text": "왜 찔러? (curious)...칩 안에 뭐 있나 보는 거야?",
+            "mood": "neutral"
+          }
+        ]
+      },
+      "fluster_lines": [
+        {
+          "text": "우와, 칩 완전 반짝반짝해! (happy)봐 봐!",
+          "mood": "flustered_surprised"
+        },
+        {
+          "text": "이거 생각보다 재밌네! (embarrassed)...또 해도 돼?",
+          "mood": "happy"
+        },
+        {
+          "text": "칩 이상해졌어? (flustered_worried)아니면 원래 이런 거야?",
+          "mood": "curious"
+        }
+      ],
+      "fluster_moods": [
+        "flustered_surprised",
+        "flustered_worried"
+      ]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://b15cwnecybe2g"]
+
+[ext_resource type="Script" uid="uid://b6vo6onai0ljy" path="res://system/app/main.gd" id="1_0xm2m"]
+[ext_resource type="Script" uid="uid://kcopg8it04no" path="res://system/services/desktop/desktop_character_manager.gd" id="2_1bvp3"]
+[ext_resource type="Script" uid="uid://ctx6126wrn5ja" path="res://system/ui/board_window.gd" id="7_272bh"]
+[ext_resource type="Script" path="res://system/ui/system_tray.gd" id="8_5vw27"]
+
+[node name="Main" type="Node2D" unique_id=1682706611]
+script = ExtResource("1_0xm2m")
+
+[node name="DesktopCharacters" type="Node2D" parent="." unique_id=938793884]
+
+[node name="DesktopCharacterManager" type="Node" parent="DesktopCharacters" unique_id=43545408]
+script = ExtResource("2_1bvp3")
+
+[node name="TalkTimer" type="Timer" parent="." unique_id=1249629004]
+one_shot = true
+
+[node name="BoardWindow" type="Window" parent="." unique_id=2143395856]
+oversampling_override = 1.0
+visible = false
+script = ExtResource("7_272bh")
+
+[node name="SystemTray" type="StatusIndicator" parent="." unique_id=1014791067]
+script = ExtResource("8_5vw27")

@@ -1,0 +1,215 @@
+{
+  "boot": {
+    "secondary_delay_seconds": 4.0,
+    "primary_lines": {
+      "crt": [
+        {
+          "text": "...켜졌네. (annoyed)그래서, 오늘은 바로 딴짓부터 할 생각 아니지?",
+          "mood": "neutral"
+        },
+        {
+          "text": "부팅 끝. (neutral)...인사 정도는 해도 되잖아.",
+          "mood": "annoyed"
+        },
+        {
+          "text": "응, 왔어. (annoyed)왜 그렇게 빤히 봐. 처음 보는 것도 아니면서.",
+          "mood": "neutral"
+        }
+      ],
+      "chip": [
+        {
+          "text": "켜졌다! (curious)너도 있어? (happy)있다!",
+          "mood": "happy"
+        },
+        {
+          "text": "칩도 켜졌어! (curious)오늘은 뭐 하는 거야?",
+          "mood": "happy"
+        },
+        {
+          "text": "안녕! (happy)칩이 먼저 인사했다!",
+          "mood": "curious"
+        }
+      ]
+    },
+    "arrival_lines": {
+      "crt": [
+        {
+          "text": "나 빼고 먼저 켠 거야? (neutral)...뭐, 기다린 건 아니고.",
+          "mood": "annoyed"
+        },
+        {
+          "text": "왔어. (annoyed)칩이 먼저 떠들고 있었지?",
+          "mood": "neutral"
+        },
+        {
+          "text": "응, 나도 왔어. (neutral)둘 다 벌써 시작했네.",
+          "mood": "annoyed"
+        }
+      ],
+      "chip": [
+        {
+          "text": "나도 왔어! (curious)뭐 하고 있었어?",
+          "mood": "happy"
+        },
+        {
+          "text": "칩도 왔다! (happy)안 늦었지?",
+          "mood": "curious"
+        },
+        {
+          "text": "앗, 켜져 있었네! (happy)칩도 끼워 줘!",
+          "mood": "curious"
+        }
+      ]
+    },
+    "peer_after_arrival_lines": {
+      "crt": [
+        {
+          "text": "늦었잖아, 칩. (neutral)...아니, 엄청 기다린 건 아니야.",
+          "mood": "annoyed"
+        },
+        {
+          "text": "칩, 또 그렇게 신났어? (tired)아침부터 힘도 좋다.",
+          "mood": "annoyed"
+        },
+        {
+          "text": "왔으면 얌전히 좀 있어. (neutral)...5분만이라도.",
+          "mood": "annoyed"
+        }
+      ],
+      "chip": [
+        {
+          "text": "CRT양이다! (happy)같이 켜졌다!",
+          "mood": "curious"
+        },
+        {
+          "text": "CRT양도 왔어! (curious)왜 벌써 피곤해 보여?",
+          "mood": "happy"
+        },
+        {
+          "text": "앗, CRT양! (happy)칩 안 늦었어. 아마도!",
+          "mood": "curious"
+        }
+      ]
+    }
+  },
+  "hourly": {
+    "characters": {
+      "crt": {
+        "morning": [
+          {
+            "text": "지금 {hour}시야. (annoyed)아직 멍하니 있을 거야? (neutral)...뭐, 정신 차릴 시간 정도는 줄게.",
+            "mood": "neutral"
+          },
+          {
+            "text": "{hour}시. (neutral)인사는 했고. (annoyed)이제 진짜 시작해.",
+            "mood": "annoyed"
+          },
+          {
+            "text": "벌써 {hour}시네. (tired)설마 켜 놓고 다시 누운 건 아니지?",
+            "mood": "annoyed"
+          }
+        ],
+        "day": [
+          {
+            "text": "벌써 {hour}시인데. 하던 건 어디까지 했어? (annoyed)...왜 대답이 없어.",
+            "mood": "neutral"
+          },
+          {
+            "text": "{hour}시야. (neutral)내가 굳이 잔소리 안 해도 알아서 하고 있지?",
+            "mood": "annoyed"
+          },
+          {
+            "text": "{hour}시. (neutral)아까부터 꽤 조용하던데. 집중 중이면 방해는 안 할게.",
+            "mood": "annoyed"
+          }
+        ],
+        "evening": [
+          {
+            "text": "{hour}시네. 아직도 붙잡고 있어? (tired)적당히 끊을 줄도 알아야지.",
+            "mood": "neutral"
+          },
+          {
+            "text": "{hour}시야. (neutral)오늘 한 건 좀 있어? (annoyed)없다고 하면 내가 뭐라고 할 것 같아.",
+            "mood": "tired"
+          },
+          {
+            "text": "벌써 {hour}시. (tired)계속 화면만 보고 있었으면 눈 좀 떼.",
+            "mood": "neutral"
+          }
+        ],
+        "late_night": [
+          {
+            "text": "지금 {hour}시야. (worried)...이 시간까지 할 필요는 없잖아. (annoyed)내일 망치면 더 귀찮아져.",
+            "mood": "tired"
+          },
+          {
+            "text": "{hour}시. (tired)아직도 안 끝났어? (worried)진짜 무리하는 건 아니지.",
+            "mood": "annoyed"
+          },
+          {
+            "text": "벌써 {hour}시네. (worried)오늘은 여기서 끊어도 되는 거 아니야? (annoyed)...내가 먼저 걱정한 건 아니고.",
+            "mood": "tired"
+          }
+        ]
+      },
+      "chip": {
+        "morning": [
+          {
+            "text": "{hour}시! (curious)일어났어? (happy)칩은 벌써 켜져 있어!",
+            "mood": "happy"
+          },
+          {
+            "text": "지금 {hour}시래! (happy)안녕! 칩이 먼저 인사했다!",
+            "mood": "curious"
+          },
+          {
+            "text": "{hour}시! (curious)오늘은 뭐 할 거야? (happy)칩도 구경할래!",
+            "mood": "happy"
+          }
+        ],
+        "day": [
+          {
+            "text": "{hour}시래! (curious)뭐 하고 있었어? (happy)칩도 볼래!",
+            "mood": "happy"
+          },
+          {
+            "text": "{hour}시! (happy)손가락 꼬물꼬물 움직이는 거 칩도 보고 있었어!",
+            "mood": "curious"
+          },
+          {
+            "text": "지금 {hour}시야! (curious)아까부터 화면만 보네? (happy)재밌는 거야?",
+            "mood": "happy"
+          }
+        ],
+        "evening": [
+          {
+            "text": "{hour}시! 저녁이다! (curious)...저녁 맞지? (happy)아무튼 칩은 맞다고 할래!",
+            "mood": "happy"
+          },
+          {
+            "text": "벌써 {hour}시래! (curious)오늘 한 거 많아? (happy)칩은 많이 구경했어!",
+            "mood": "happy"
+          },
+          {
+            "text": "{hour}시! (happy)아직 같이 있네! (curious)그럼 더 구경해도 돼?",
+            "mood": "curious"
+          }
+        ],
+        "late_night": [
+          {
+            "text": "{hour}시...? (worried)이때도 안 자? (curious)원래 이 시간엔 뭐 하는 거야?",
+            "mood": "worried"
+          },
+          {
+            "text": "벌써 {hour}시야. (worried)칩은 안 자도 되는데, 너도 그래?",
+            "mood": "curious"
+          },
+          {
+            "text": "{hour}시! (curious)...아니, 느낌표 붙일 시간이 아닌가? (worried)너 안 졸려?",
+            "mood": "happy"
+          }
+        ]
+      }
+    }
+  }
+}
