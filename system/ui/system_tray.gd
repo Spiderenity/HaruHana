@@ -108,14 +108,6 @@ func create_tray_menu() -> void:
 
 	NativeMenu.add_item(
 		tray_menu,
-		_l("Week", "주간"),
-		_on_menu_item,
-		Callable(),
-		"open_week"
-	)
-
-	NativeMenu.add_item(
-		tray_menu,
 		_l("Memo", "메모"),
 		_on_menu_item,
 		Callable(),
@@ -183,7 +175,6 @@ func configure_taskbar_menu() -> void:
 		{"title": _l("Chat", "채팅"), "action": "open_chat"},
 		{"title": _l("Calendar", "캘린더"), "action": "open_calendar"},
 		{"title": _l("Timer", "타이머"), "action": "open_timer"},
-		{"title": _l("Week", "주간"), "action": "open_week"},
 		{"title": _l("Memo", "메모"), "action": "open_memo"},
 		{"title": _l("Settings", "설정"), "action": "open_settings"},
 		{"title": _l("Start 15 min timer", "15분 타이머 시작"), "action": "timer_15"},
@@ -223,11 +214,6 @@ func dispatch_action(command: String) -> void:
 		"open_timer":
 			open_board_tab_requested.emit(
 				"Timer"
-			)
-
-		"open_week":
-			open_board_tab_requested.emit(
-				"Week"
 			)
 
 		"open_memo":

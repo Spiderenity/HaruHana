@@ -7,7 +7,7 @@
         "mood": "neutral"
       },
       {
-        "text": "좋아. (neutral)적어도 시작부터 망가진 건 아닌가 보네.",
+        "text": "좋아. (neutral)고장난 건 아닌가 보네.",
         "mood": "curious"
       },
       {
@@ -35,7 +35,7 @@
         "mood": "neutral"
       },
       {
-        "text": "그러니까 앞으로 잘 부탁... (embarrassed)(annoyed)아니, 딴짓이나 너무 하지 마.",
+        "text": "그러니까 앞으로 잘 부탁... (embarrassed)(annoyed)아니, 제대로 해.",
         "mood": "neutral"
       }
     ],

@@ -188,7 +188,8 @@ static func load_thread(
 static func append_message(
 	thread_id: String,
 	role: String,
-	content: String
+	content: String,
+	character_id: String = ""
 ) -> Error:
 
 	role = role.strip_edges()
@@ -225,13 +226,17 @@ static func append_message(
 	if messages_value is Array:
 		messages = messages_value
 
-	messages.append({
+	var message: Dictionary = {
 		"role": role,
 		"content": content,
 		"created_at_unix": int(
 			Time.get_unix_time_from_system()
 		),
-	})
+	}
+	character_id = character_id.strip_edges().to_lower()
+	if role == "assistant" and not character_id.is_empty():
+		message["character_id"] = character_id
+	messages.append(message)
 
 	while messages.size() > (
 		MAX_STORED_MESSAGES
@@ -383,6 +388,13 @@ static func get_context_messages(
 
 		if content.is_empty():
 			continue
+
+		if role == "assistant":
+			var character_id: String = str(
+				message.get("character_id", "")
+			).strip_edges().to_lower()
+			if not character_id.is_empty():
+				content = "[" + character_id + " replied] " + content
 
 		result.append({
 			"role": role,

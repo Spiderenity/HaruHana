@@ -624,8 +624,7 @@ func handle_poke(
 		return
 
 	if _is_interaction_locked():
-		_mark_interaction_activity()
-		_handle_locked_touch_attempt()
+		handle_click_dialogue(local_position, pet_size)
 		return
 
 	if not is_poke_mode():
@@ -640,6 +639,7 @@ func handle_poke(
 				poke_reaction_interval * 1000.0
 			)
 	):
+		handle_click_dialogue(local_position, pet_size)
 		return
 
 	var zone: String = (
@@ -650,6 +650,7 @@ func handle_poke(
 	)
 
 	if zone.is_empty():
+		handle_click_dialogue(local_position, pet_size)
 		return
 
 	last_poke_reaction_msec = now_msec
@@ -711,6 +712,46 @@ func handle_poke(
 			character_id,
 			dialogue
 		)
+	else:
+		handle_click_dialogue(local_position, pet_size)
+
+func handle_click_dialogue(
+	local_position: Vector2,
+	pet_size: Vector2,
+	lowest_play_level_only: bool = false
+) -> void:
+	if character_id.is_empty():
+		return
+
+	var zone: String = _get_touch_zone(local_position, pet_size)
+	if zone.is_empty():
+		zone = "torso"
+
+	var event_kind: String = "pet"
+	if flustered:
+		event_kind = "flustered"
+	elif _is_interaction_locked():
+		event_kind = "locked"
+
+	var dialogue: Dictionary = {}
+	if event_kind == "pet" and lowest_play_level_only:
+		dialogue = _pick_pet_dialogue_stage(0, zone)
+	else:
+		dialogue = _pick_local_dialogue(event_kind, zone)
+	if dialogue.is_empty() and event_kind != "pet":
+		if lowest_play_level_only:
+			dialogue = _pick_pet_dialogue_stage(0, zone)
+		else:
+			dialogue = _pick_local_dialogue("pet", zone)
+	if dialogue.is_empty():
+		dialogue = _pick_local_dialogue("start", zone)
+	if dialogue.is_empty():
+		dialogue = {"text": "…", "mood": "curious"}
+
+	dialogue = _apply_play_expression_mood(dialogue, zone)
+	_mark_interaction_activity()
+	last_touch_zone = zone
+	local_reaction_requested.emit(character_id, dialogue)
 
 func _add_play(
 	amount: float,

@@ -375,8 +375,8 @@ func build_ui() -> void:
 	new_chat_character_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_bind_localized_text(
 		new_chat_character_selector,
-		"Character for the next chat",
-		"새 대화 캐릭터 선택",
+		"Character who replies",
+		"답변할 캐릭터 선택",
 		"tooltip_text"
 	)
 	sidebar.add_child(new_chat_character_selector)
@@ -499,6 +499,7 @@ func build_ui() -> void:
 	utility_row.add_child(clear_memory_button)
 
 	new_chat_button.pressed.connect(_on_new_chat_pressed)
+	new_chat_character_selector.item_selected.connect(_on_chat_character_selected)
 	thread_list.item_selected.connect(_on_thread_selected)
 	send_button.pressed.connect(_on_send_pressed)
 	clear_memory_button.pressed.connect(_on_clear_memory_pressed)
@@ -635,6 +636,8 @@ func reload_character_list() -> void:
 	new_chat_button.disabled = (
 		not has_characters
 	)
+	if profile_by_id.has(current_character_id):
+		_select_chat_character(current_character_id)
 
 	var preferred_thread_id: String = ""
 
@@ -696,6 +699,38 @@ func get_character_display_name(
 		return display_name
 
 	return character_id.capitalize()
+
+func _select_chat_character(character_id: String) -> void:
+	character_id = character_id.strip_edges().to_lower()
+	for index: int in range(new_chat_character_selector.item_count):
+		if str(new_chat_character_selector.get_item_metadata(index)) == character_id:
+			new_chat_character_selector.select(index)
+			_apply_selected_chat_character()
+			return
+
+func _on_chat_character_selected(_index: int) -> void:
+	if is_ai_busy():
+		return
+	_apply_selected_chat_character()
+
+func _apply_selected_chat_character() -> void:
+	var index: int = new_chat_character_selector.selected
+	if index < 0 or index >= new_chat_character_selector.item_count:
+		return
+	var character_id: String = str(
+		new_chat_character_selector.get_item_metadata(index)
+	).strip_edges().to_lower()
+	if character_id.is_empty() or not profile_by_id.has(character_id):
+		return
+	current_character_id = character_id
+	current_character_name = get_character_display_name(character_id)
+	if not current_thread_id.is_empty():
+		conversation_label.text = current_character_name
+		message_input.placeholder_text = _l(
+			"Message " + current_character_name + "...",
+			current_character_name + "에게 메시지..."
+		)
+		validate_current_profile()
 
 func refresh_thread_list(
 	preferred_thread_id: String = ""
@@ -929,13 +964,10 @@ func open_thread(
 
 	current_thread_id = thread_id
 
-	current_character_id = character_id
-
-	current_character_name = (
-		get_character_display_name(
-			character_id
-		)
-	)
+	if current_character_id.is_empty() or not profile_by_id.has(current_character_id):
+		_select_chat_character(character_id)
+	else:
+		_apply_selected_chat_character()
 
 	current_thread_title = str(
 		thread.get(
@@ -1275,9 +1307,14 @@ func load_current_thread() -> void:
 				)
 
 			elif role == "assistant":
+				var message_character_id: String = str(
+					message.get("character_id", current_character_id)
+				).strip_edges().to_lower()
+				if not profile_by_id.has(message_character_id):
+					message_character_id = current_character_id
 				append_character_message(
-					current_character_id,
-					current_character_name,
+					message_character_id,
+					get_character_display_name(message_character_id),
 					content
 				)
 
@@ -1309,6 +1346,8 @@ func _on_message_submitted(
 func send_current_message() -> void:
 	if current_thread_id.is_empty():
 		return
+
+	_apply_selected_chat_character()
 
 	if current_character_id.is_empty():
 		return
@@ -1459,6 +1498,7 @@ func send_current_message() -> void:
 	var started: bool = ai_client.send_messages(api_key, model, messages)
 
 	if not started:
+		_set_desktop_response_loading(pending_character_id, false)
 		pending_thread_id = ""
 		pending_character_id = ""
 		pending_character_name = ""
@@ -1469,6 +1509,8 @@ func send_current_message() -> void:
 		)
 
 		return
+
+	_set_desktop_response_loading(pending_character_id, true)
 
 	refresh_thread_list(
 		current_thread_id
@@ -1510,6 +1552,10 @@ func build_system_prompt(
 
 	prompt += (
 		"\n\n"
+		+ "You are the character replying to the user's newest message. "
+		+ "Earlier assistant messages may begin with [character_id replied] "
+		+ "when a different character answered in this same chat. Treat those "
+		+ "as conversation history, not as your own identity.\n\n"
 		+ "Return only one JSON object:\n"
 		+ "{"
 		+ "\"reply\":\"in-character reply\","
@@ -1546,6 +1592,7 @@ func _on_ai_response_received(
 	)
 
 	var target_user_text: String = pending_user_text
+	_set_desktop_response_loading(target_character_id, false)
 
 	pending_thread_id = ""
 	pending_character_id = ""
@@ -1607,7 +1654,8 @@ func _on_ai_response_received(
 			.append_message(
 				target_thread_id,
 				"assistant",
-				reply
+				reply,
+				target_character_id
 			)
 	)
 
@@ -1673,6 +1721,7 @@ func _on_ai_response_received(
 func _on_ai_request_failed(
 	message: String
 ) -> void:
+	_set_desktop_response_loading(pending_character_id, false)
 
 	pending_thread_id = ""
 	pending_character_id = ""
@@ -1683,6 +1732,21 @@ func _on_ai_request_failed(
 
 	set_waiting_state(
 		false
+	)
+
+func _set_desktop_response_loading(
+	character_id: String,
+	loading: bool
+) -> void:
+	character_id = character_id.strip_edges().to_lower()
+	if character_id.is_empty():
+		return
+	get_tree().call_group(
+		DESKTOP_DIALOGUE_GROUP,
+		"set_character_response_loading",
+		character_id,
+		"chat",
+		loading
 	)
 
 func notify_desktop_character_reply(

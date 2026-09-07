@@ -66,7 +66,6 @@ var alpha_hit_upper_center_pixel: Vector2 = Vector2.ZERO
 var alpha_hit_attempted: bool = false
 
 var base_opacity: float = 0.82
-var hover_opacity_multiplier: float = 1.20
 
 var handle_window: Window
 
@@ -91,11 +90,10 @@ var fade_alpha: float = 0.82
 var fade_alpha_initialized: bool = false
 
 const FADE_RESPONSE_SPEED: float = 8.0
-const HOVER_IDLE_PASSTHROUGH_SECONDS: float = 1.5
+const HOVER_IDLE_PASSTHROUGH_SECONDS: float = 0.5
+const HOVER_OPACITY_FACTOR: float = 1.20
 
-var alt_capture_window: Window
-
-var alt_capture_button: Button
+var interaction_capture_button: Button
 
 var interaction_capture_active: bool = false
 var passive_hover_active: bool = false
@@ -256,20 +254,13 @@ func _read_vector2_config(
 	return fallback
 
 func configure_visual_behavior(
-	new_base_opacity: float,
-	new_hover_opacity_multiplier: float
+	new_base_opacity: float
 ) -> void:
 
 	base_opacity = clampf(
 		new_base_opacity,
 		0.10,
 		1.0
-	)
-
-	hover_opacity_multiplier = clampf(
-		new_hover_opacity_multiplier,
-		1.0,
-		2.0
 	)
 
 	if is_node_ready():
@@ -279,20 +270,6 @@ func configure_visual_behavior(
 		call_deferred(
 			"update_character_fade"
 		)
-
-func get_hover_opacity() -> float:
-	return clampf(
-		base_opacity * hover_opacity_multiplier,
-		0.0,
-		1.0
-	)
-
-func get_passive_opacity() -> float:
-	return clampf(
-		base_opacity / hover_opacity_multiplier,
-		0.0,
-		1.0
-	)
 
 func configure_desktop_slot(
 	slot_index: int
@@ -437,7 +414,7 @@ func _finish_window_setup_after_layout() -> void:
 
 	create_handle_window()
 
-	create_alt_capture_window()
+	create_interaction_capture()
 
 	set_process(
 		true
@@ -550,74 +527,59 @@ func enter_interaction_mode() -> void:
 	has_last_alt_mouse = false
 	alt_stroke_accumulator = 0.0
 
-	sync_alt_capture_window()
-
-	if alt_capture_window != null:
-		alt_capture_window.show()
+	sync_interaction_capture()
+	if interaction_capture_button != null:
+		interaction_capture_button.show()
+	_set_main_window_passthrough(false)
 
 func exit_interaction_mode() -> void:
 	has_last_alt_mouse = false
 	alt_stroke_accumulator = 0.0
 
-	if alt_capture_window != null:
-		alt_capture_window.hide()
+	if interaction_capture_button != null:
+		interaction_capture_button.hide()
+	_set_main_window_passthrough(true)
 
-func create_alt_capture_window() -> void:
-	alt_capture_window = Window.new()
-
-	alt_capture_window.name = (
-		"PetAltInteraction"
-	)
-
-	alt_capture_window.borderless = true
-	alt_capture_window.transparent = true
-	alt_capture_window.transparent_bg = true
-	alt_capture_window.unresizable = true
-	alt_capture_window.unfocusable = true
-	alt_capture_window.always_on_top = true
-	alt_capture_window.transient = false
-	alt_capture_window.mouse_passthrough = true
-	alt_capture_window.visible = false
-	if character_actor != null and character_actor.has_method("request_application_close"):
-		alt_capture_window.close_requested.connect(
-			Callable(character_actor, "request_application_close")
-		)
-
-	add_child(
-		alt_capture_window
-	)
-
-	alt_capture_button = Button.new()
-
-	alt_capture_button.text = ""
-
-	alt_capture_button.flat = true
-
-	alt_capture_button.focus_mode = (
-		Control.FOCUS_NONE
-	)
-
-	alt_capture_button.button_mask = (
+func create_interaction_capture() -> void:
+	interaction_capture_button = Button.new()
+	interaction_capture_button.name = "PetInteractionCapture"
+	interaction_capture_button.text = ""
+	interaction_capture_button.flat = true
+	interaction_capture_button.focus_mode = Control.FOCUS_NONE
+	interaction_capture_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	interaction_capture_button.z_index = 4096
+	interaction_capture_button.button_mask = (
 		MOUSE_BUTTON_MASK_LEFT
 		| MOUSE_BUTTON_MASK_RIGHT
 	)
-
-	alt_capture_button.mouse_default_cursor_shape = (
+	interaction_capture_button.mouse_default_cursor_shape = (
 		Control.CURSOR_POINTING_HAND
 	)
-
-	alt_capture_window.add_child(
-		alt_capture_button
+	interaction_capture_button.hide()
+	main_window.add_child(interaction_capture_button)
+	interaction_capture_button.gui_input.connect(
+		_on_interaction_capture_gui_input
 	)
+	sync_interaction_capture()
 
-	alt_capture_button.gui_input.connect(
-		_on_alt_capture_gui_input
-	)
+func _set_main_window_passthrough(enabled: bool) -> void:
+	if main_window == null or not is_instance_valid(main_window):
+		return
+	if (
+		OS.get_name() == "Windows"
+		and passthrough != null
+		and passthrough.has_method("set_passthrough")
+	):
+		passthrough.call(
+			"set_passthrough",
+			main_window.get_window_id(),
+			enabled
+		)
+		return
+	main_window.mouse_passthrough = enabled
 
-	sync_alt_capture_window()
-
-func sync_alt_capture_window() -> void:
-	if alt_capture_window == null:
+func sync_interaction_capture() -> void:
+	if interaction_capture_button == null:
 		return
 
 	var pet_rect: Rect2 = (
@@ -627,53 +589,10 @@ func sync_alt_capture_window() -> void:
 	if pet_rect.size == Vector2.ZERO:
 		return
 
-	var capture_size: Vector2i = Vector2i(
-		maxi(
-			1,
-			roundi(
-				pet_rect.size.x
-			)
-		),
+	interaction_capture_button.position = pet_rect.position
+	interaction_capture_button.size = pet_rect.size
 
-		maxi(
-			1,
-			roundi(
-				pet_rect.size.y
-			)
-		)
-	)
-
-	alt_capture_window.size = (
-		capture_size
-	)
-
-	alt_capture_window.position = Vector2i(
-		main_window.position.x
-			+ roundi(
-				pet_rect.position.x
-			),
-
-		main_window.position.y
-			+ roundi(
-				pet_rect.position.y
-			)
-	)
-
-	if alt_capture_button != null:
-		alt_capture_button.position = (
-			Vector2.ZERO
-		)
-
-		alt_capture_button.size = Vector2(
-			capture_size.x,
-			capture_size.y
-		)
-
-	alt_capture_window.mouse_passthrough = (
-		not interaction_capture_active
-	)
-
-func _on_alt_capture_gui_input(event: InputEvent) -> void:
+func _on_interaction_capture_gui_input(event: InputEvent) -> void:
 	if not interaction_capture_active:
 		return
 	if not (event is InputEventMouseButton):
@@ -693,7 +612,7 @@ func _on_alt_capture_gui_input(event: InputEvent) -> void:
 		_:
 			return
 
-	alt_capture_button.accept_event()
+	interaction_capture_button.accept_event()
 
 func get_alt_local_mouse_position() -> Vector2:
 	var pet_rect: Rect2 = (
@@ -1382,7 +1301,7 @@ func configure_vertical_movement(enabled: bool) -> void:
 	locked_y = usable_screen.end.y - roundi(ground_rect.end.y) - DEFAULT_SCREEN_BOTTOM_MARGIN
 	main_window.position = Vector2i(current_x, locked_y)
 	sync_handle_position()
-	sync_alt_capture_window()
+	sync_interaction_capture()
 
 func is_vertical_movement_enabled() -> bool:
 	return vertical_movement_enabled
@@ -1519,12 +1438,10 @@ func set_character_alpha(
 		set_visual_alpha_direct(alpha)
 
 func update_character_fade(delta: float = 0.016) -> void:
-	var hover_alpha: float = (
-		get_hover_opacity()
-	)
+	var hover_alpha := clampf(base_opacity * HOVER_OPACITY_FACTOR, 0.0, 1.0)
 	var target_alpha: float = base_opacity
 	if passive_hover_active or dragging:
-		target_alpha = get_passive_opacity()
+		target_alpha = clampf(base_opacity / HOVER_OPACITY_FACTOR, 0.0, 1.0)
 	elif (
 		is_mouse_over_character()
 		or is_mouse_over_handle()
@@ -1570,7 +1487,7 @@ func create_handle_window() -> void:
 
 	handle_button = Button.new()
 
-	handle_button.text = "<>"
+	handle_button.text = "☰"
 
 	handle_button.flat = true
 
@@ -1859,14 +1776,14 @@ func _set_automatic_slide_window_x(
 	)
 
 	sync_handle_position()
-	sync_alt_capture_window()
+	sync_interaction_capture()
 
 func _on_automatic_slide_finished() -> void:
 	automatic_slide_active = false
 	automatic_slide_tween = null
 
 	sync_handle_position()
-	sync_alt_capture_window()
+	sync_interaction_capture()
 
 func _cancel_automatic_slide() -> void:
 	if automatic_slide_tween != null:
@@ -1971,7 +1888,7 @@ func update_dragging() -> void:
 
 	sync_handle_position()
 
-	sync_alt_capture_window()
+	sync_interaction_capture()
 
 func _process(
 	delta: float
@@ -1989,6 +1906,6 @@ func _process(
 
 	sync_handle_position()
 
-	sync_alt_capture_window()
+	sync_interaction_capture()
 
 	update_handle_visibility()

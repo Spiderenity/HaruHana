@@ -3,15 +3,19 @@ config_version=5
 [application]
 
 config/name="HaruHana"
-config/version="0.1.0-alpha.1"
+config/version="0.1.1-alpha"
 run/main_scene="res://system/scenes/launch_router.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://assets/icon/icon.svg"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0, 0, 0, 0)
 
 [display]
 
 window/size/viewport_width=400
 window/size/viewport_height=600
+window/size/initial_width=1
+window/size/initial_height=1
 window/size/borderless=true
 window/size/always_on_top=false
 window/size/transparent=true
@@ -31,6 +35,7 @@ enabled=PackedStringArray("res://system/addons/windows_mouse_passthrough/plugin.
 
 [rendering]
 
+environment/defaults/default_clear_color=Color(0, 0, 0, 0)
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

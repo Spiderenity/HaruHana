@@ -571,10 +571,8 @@ func _play_first_boot_sequence(character_id: String) -> void:
 		var fallback_name: String = (
 			"너" if output_language == "ko" else "you"
 		)
-		line["text"] = str(
-			line.get("text", "")
-		).replace(
-			"{user_name}",
+		line["text"] = UserProfileSettingsScript.replace_user_name_placeholder(
+			str(line.get("text", "")),
 			(
 				user_name
 				if not user_name.is_empty()

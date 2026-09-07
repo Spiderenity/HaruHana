@@ -118,6 +118,11 @@ func _on_startup_boot_started() -> void:
 		_release_startup_boot_preparation()
 		return
 
+	boot_primary_character_id = planned_ids[0]
+	character_manager.set_character_response_loading(
+		boot_primary_character_id, "boot", true
+	)
+
 func _get_special_boot_occasion(
 	character_ids: Array[String],
 	date: Dictionary,
@@ -179,6 +184,7 @@ func request_debug_special_boot(month: int, day: int, target_character_id: Strin
 	if request_id <= 0:
 		return false
 	debug_special_boot_request_id = request_id
+	character_manager.set_character_response_loading(ids[0], "debug_boot", true)
 	return true
 
 func _on_boot_scene_ready(
@@ -188,6 +194,11 @@ func _on_boot_scene_ready(
 
 	if request_id == debug_special_boot_request_id:
 		debug_special_boot_request_id = 0
+		if character_manager != null:
+			for character_id: String in character_manager.get_active_character_ids():
+				character_manager.set_character_response_loading(
+					character_id, "debug_boot", false
+				)
 		call_deferred("_play_debug_special_boot_lines", lines.duplicate(true))
 		return
 
@@ -195,6 +206,10 @@ func _on_boot_scene_ready(
 		return
 
 	boot_ai_request_id = 0
+	if character_manager != null and not boot_primary_character_id.is_empty():
+		character_manager.set_character_response_loading(
+			boot_primary_character_id, "boot", false
+		)
 	boot_ai_scene_lines = lines.duplicate(
 		true
 	)
@@ -534,8 +549,8 @@ func _play_next_first_boot_line(sequence: Dictionary) -> void:
 	)
 	var fallback_name: String = "너" if output_language == "ko" else "you"
 	var text_value: String = str(line.get("text", ""))
-	line["text"] = text_value.replace(
-		"{user_name}",
+	line["text"] = UserProfileSettings.replace_user_name_placeholder(
+		text_value,
 		user_name if not user_name.is_empty() else fallback_name
 	)
 

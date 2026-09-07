@@ -1,7 +1,6 @@
 extends VBoxContainer
 class_name CompanionSettingsPanel
 
-signal export_week_requested
 signal character_pack_changed(
 	pack_id: String
 )
@@ -26,10 +25,6 @@ const StartupProgramSettingsScript = preload(
 )
 const UpdateServiceScript = preload(
 	"res://system/services/update/update_service.gd"
-)
-
-const ReportSettingsScript = preload(
-	"res://system/services/report/report_settings.gd"
 )
 
 const SETTINGS_LABEL_WIDTH: float = 120.0
@@ -76,9 +71,6 @@ var refreshing_generation_settings: bool = false
 var pack_selector: OptionButton
 var set_pack_button: Button
 
-var report_path_input: LineEdit
-var report_status_label: Label
-
 func _ready() -> void:
 	update_service = UpdateServiceScript.new()
 	add_child(update_service)
@@ -96,8 +88,6 @@ func _ready() -> void:
 
 	refresh_pack_list()
 
-	refresh_report_path()
-
 	call_deferred("_connect_desktop_settings_manager")
 
 	var previous_update_error: String = update_service.consume_last_update_error()
@@ -110,16 +100,6 @@ func build_ui() -> void:
 	title.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_LARGE)
 	add_child(title)
 
-	var description := Label.new()
-	_bind_localized_text(
-		description,
-		"Manage the board, desktop pets, AI and saved preferences.",
-		"보드, 데스크탑 펫, AI와 저장 설정을 관리합니다."
-	)
-	_style_secondary_label(description)
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(description)
-
 	add_child(HSeparator.new())
 
 	build_language_section()
@@ -129,13 +109,10 @@ func build_ui() -> void:
 	build_update_section()
 	build_ai_section()
 	build_pack_section()
-	build_report_section()
 
 func _add_section_header(
 	english_title: String,
-	korean_title: String,
-	english_description: String,
-	korean_description: String
+	korean_title: String
 ) -> void:
 	var spacer := Control.new()
 	spacer.custom_minimum_size.y = 12.0
@@ -145,16 +122,6 @@ func _add_section_header(
 	_bind_localized_text(heading, english_title, korean_title)
 	heading.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_MEDIUM)
 	add_child(heading)
-
-	var description := Label.new()
-	_bind_localized_text(
-		description,
-		english_description,
-		korean_description
-	)
-	_style_secondary_label(description)
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(description)
 
 	add_child(HSeparator.new())
 
@@ -244,9 +211,7 @@ func apply_language() -> void:
 func build_language_section() -> void:
 	_add_section_header(
 		"Language",
-		"언어",
-		"Choose the language used by the board and supported dialogue.",
-		"보드와 지원되는 대화에 사용할 언어를 선택합니다."
+		"언어"
 	)
 
 	var row: HBoxContainer = HBoxContainer.new()
@@ -294,9 +259,7 @@ func _on_language_selected(index: int) -> void:
 func build_user_section() -> void:
 	_add_section_header(
 		"You",
-		"사용자",
-		"Set the name desktop pets can use when talking to you.",
-		"데스크탑 펫이 대화에서 부를 이름을 설정합니다."
+		"사용자"
 	)
 
 	var row: HBoxContainer = HBoxContainer.new()
@@ -346,9 +309,7 @@ func build_appearance_section() -> void:
 
 	_add_section_header(
 		"Appearance",
-		"화면 스타일",
-		"Adjust the board theme and speech bubble text.",
-		"보드 테마와 말풍선 텍스트 표시를 조정합니다."
+		"화면 스타일"
 	)
 
 	var theme_row: HBoxContainer = HBoxContainer.new()
@@ -499,8 +460,13 @@ func _refresh_font_selector(desired_path: String = "") -> void:
 		bubble_font_selector.set_item_metadata(index, str(font_info.get("path", "")))
 
 	if bubble_font_selector.item_count == 0:
-		bubble_font_selector.add_item(_l("Godot default", "Godot 기본 글꼴"))
-		bubble_font_selector.set_item_metadata(0, "")
+		bubble_font_selector.add_item(
+			AppearanceSettingsScript.DEFAULT_BUBBLE_FONT.get_file().get_basename()
+		)
+		bubble_font_selector.set_item_metadata(
+			0,
+			AppearanceSettingsScript.DEFAULT_BUBBLE_FONT
+		)
 
 	if not _select_option_by_metadata(bubble_font_selector, desired_path):
 		bubble_font_selector.select(0)
@@ -673,9 +639,7 @@ func _save_appearance_settings() -> void:
 func build_startup_program_section() -> void:
 	_add_section_header(
 		"Startup",
-		"시작 프로그램",
-		"Choose whether HaruHana starts automatically when you sign in to Windows.",
-		"Windows 로그인 시 하루하나를 자동으로 실행할지 설정합니다."
+		"시작 프로그램"
 	)
 
 	startup_program_check = CheckBox.new()
@@ -713,9 +677,7 @@ func _on_startup_program_toggled(enabled: bool) -> void:
 func build_update_section() -> void:
 	_add_section_header(
 		"Updates",
-		"업데이트",
-		"Check for and install new versions.",
-		"새 버전을 확인하고 설치합니다."
+		"업데이트"
 	)
 
 	var version_row := HBoxContainer.new()
@@ -1014,9 +976,7 @@ func _update_error_text(code: String) -> String:
 func build_ai_section() -> void:
 	_add_section_header(
 		"AI",
-		"AI",
-		"Choose a provider and model, then enter that provider's API key.",
-		"AI 제공자와 모델을 선택하고 해당 서비스의 API 키를 입력합니다."
+		"AI"
 	)
 
 	var model_row := HBoxContainer.new()
@@ -1364,9 +1324,7 @@ func _apply_generation_settings() -> void:
 func build_pack_section() -> void:
 	_add_section_header(
 		"Character Pack",
-		"캐릭터 팩",
-		"Choose which character pack the desktop pets use.",
-		"데스크탑 펫이 사용할 캐릭터 팩을 선택합니다."
+		"캐릭터 팩"
 	)
 
 	pack_selector = OptionButton.new()
@@ -1542,148 +1500,3 @@ func _notify_chat_recursive(
 			child
 		)
 
-func build_report_section() -> void:
-	_add_section_header(
-		"Weekly Reports",
-		"주간 리포트",
-		"Export weekly snapshots and choose where report files are stored.",
-		"주간 스냅샷을 내보내고 리포트 파일 저장 위치를 관리합니다."
-	)
-
-	report_path_input = LineEdit.new()
-	report_path_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	add_child(
-		report_path_input
-	)
-	report_path_input.text_submitted.connect(
-		_on_report_path_submitted
-	)
-	report_path_input.focus_exited.connect(
-		_on_report_path_focus_exited
-	)
-
-	var row: HBoxContainer = HBoxContainer.new()
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.alignment = BoxContainer.ALIGNMENT_END
-	add_child(
-		row
-	)
-
-	var export_button: Button = Button.new()
-	_bind_localized_text(
-		export_button,
-		"Export This Week",
-		"이번 주 내보내기"
-	)
-	export_button.add_theme_font_size_override(
-		"font_size",
-		AppearanceSettingsScript.UI_FONT_MEDIUM
-	)
-	export_button.pressed.connect(
-		_on_export_week_pressed
-	)
-	row.add_child(
-		export_button
-	)
-
-	var open_button: Button = Button.new()
-	_bind_localized_text(
-		open_button,
-		"Open Reports Folder",
-		"리포트 폴더 열기"
-	)
-	open_button.add_theme_font_size_override(
-		"font_size",
-		AppearanceSettingsScript.UI_FONT_MEDIUM
-	)
-	open_button.pressed.connect(
-		_on_open_reports_pressed
-	)
-	row.add_child(
-		open_button
-	)
-
-	report_status_label = Label.new()
-	_style_secondary_label(
-		report_status_label
-	)
-	report_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(
-		report_status_label
-	)
-
-func _get_report_directory() -> String:
-	return ReportSettingsScript.get_report_directory()
-
-func refresh_report_path() -> void:
-	ReportSettingsScript.ensure_report_directory()
-	report_path_input.text = _get_report_directory()
-
-func _commit_report_path() -> void:
-	if report_path_input == null:
-		return
-
-	var typed_path: String = report_path_input.text.strip_edges()
-
-	if typed_path.is_empty():
-		refresh_report_path()
-		return
-
-	if typed_path == _get_report_directory():
-		return
-
-	var saved: bool = ReportSettingsScript.set_report_directory(
-		typed_path
-	)
-
-	refresh_report_path()
-
-	if saved:
-		report_status_label.text = _l(
-			"Report folder changed.",
-			"리포트 폴더를 변경했습니다."
-		)
-	else:
-		report_status_label.text = _l(
-			"Could not save report folder.",
-			"리포트 폴더를 저장하지 못했습니다."
-		)
-
-func _on_report_path_submitted(
-	_text: String
-) -> void:
-	_commit_report_path()
-
-func _on_report_path_focus_exited() -> void:
-	_commit_report_path()
-
-func _on_open_reports_pressed() -> void:
-	ReportSettingsScript.ensure_report_directory()
-	OS.shell_open(
-		_get_report_directory()
-	)
-
-func _on_export_week_pressed() -> void:
-	export_week_requested.emit()
-	report_status_label.text = _l(
-		"Exporting this week...",
-		"이번 주 기록을 내보내는 중..."
-	)
-
-func show_export_result(
-	report_path: String
-) -> void:
-	if report_path.strip_edges().is_empty():
-		report_status_label.text = _l(
-			"Could not export this week.",
-			"이번 주 기록을 내보내지 못했습니다."
-		)
-		return
-
-	report_status_label.text = (
-		_l(
-			"Exported: ",
-			"내보냄: "
-		)
-		+ report_path
-	)

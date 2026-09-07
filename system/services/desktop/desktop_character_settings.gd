@@ -27,12 +27,13 @@ var slot_character_ids: Array = []
 var slot_skin_ids: Array = []
 
 var opacity_slider: HSlider = null
-var hover_multiplier_slider: HSlider = null
 var scale_slider: HSlider = null
+var bubble_scale_slider: HSlider = null
 var bubble_opacity_slider: HSlider = null
 var vertical_movement_check: CheckBox = null
 var bubble_drag_check: CheckBox = null
 var previous_character_opacity_percent: float = 82.0
+var previous_character_scale_percent: float = 75.0
 
 var refreshing: bool = false
 var transition_in_progress: bool = false
@@ -129,12 +130,12 @@ func _localized_setting_label(english: String) -> String:
 	match english:
 		"Default opacity":
 			return "기본 불투명도"
-		"Hover opacity multiplier":
-			return "마우스 오버 불투명도 배율"
 		"Speech bubble opacity":
 			return "말풍선 불투명도"
 		"Character size":
 			return "캐릭터 크기"
+		"Speech bubble size":
+			return "말풍선 크기"
 		_:
 			return english
 
@@ -184,14 +185,6 @@ func build_ui() -> void:
 		"%"
 	)
 
-	hover_multiplier_slider = _add_number_slider(
-		"Hover opacity multiplier",
-		1.0,
-		2.0,
-		0.05,
-		1.20
-	)
-
 	bubble_opacity_slider = _add_number_slider(
 		"Speech bubble opacity",
 		25.0,
@@ -203,6 +196,15 @@ func build_ui() -> void:
 
 	scale_slider = _add_number_slider(
 		"Character size",
+		50.0,
+		150.0,
+		1.0,
+		100.0,
+		"%"
+	)
+
+	bubble_scale_slider = _add_number_slider(
+		"Speech bubble size",
 		50.0,
 		150.0,
 		1.0,
@@ -236,9 +238,9 @@ func build_ui() -> void:
 	add_child(reset_bubbles_button)
 
 	opacity_slider.value_changed.connect(_on_character_opacity_changed)
-	hover_multiplier_slider.value_changed.connect(_on_global_setting_changed)
 	bubble_opacity_slider.value_changed.connect(_on_global_setting_changed)
-	scale_slider.value_changed.connect(_on_global_setting_changed)
+	scale_slider.value_changed.connect(_on_character_size_changed)
+	bubble_scale_slider.value_changed.connect(_on_global_setting_changed)
 	vertical_movement_check.toggled.connect(_on_global_toggle_changed)
 	bubble_drag_check.toggled.connect(_on_global_toggle_changed)
 
@@ -334,9 +336,6 @@ func refresh_global_settings() -> void:
 		* 100.0
 	)
 	previous_character_opacity_percent = opacity_slider.value
-	hover_multiplier_slider.value = float(
-		global_settings.get("hover_opacity_multiplier", 1.20)
-	)
 	bubble_opacity_slider.value = float(
 		global_settings.get("bubble_opacity", 1.0)
 	) * 100.0
@@ -344,6 +343,10 @@ func refresh_global_settings() -> void:
 		float(global_settings.get("character_scale", 0.75))
 		* 100.0
 	)
+	previous_character_scale_percent = scale_slider.value
+	bubble_scale_slider.value = float(
+		global_settings.get("bubble_scale", 1.0)
+	) * 100.0
 	vertical_movement_check.button_pressed = bool(
 		global_settings.get("vertical_movement_enabled", false)
 	)
@@ -372,6 +375,22 @@ func _on_character_opacity_changed(value: float) -> void:
 		return
 	_apply_global_settings()
 
+func _on_character_size_changed(value: float) -> void:
+	if refreshing:
+		previous_character_scale_percent = value
+		return
+	var delta := value - previous_character_scale_percent
+	previous_character_scale_percent = value
+	var adjusted_bubble_scale := clampf(
+		bubble_scale_slider.value + delta,
+		bubble_scale_slider.min_value,
+		bubble_scale_slider.max_value
+	)
+	if not is_equal_approx(bubble_scale_slider.value, adjusted_bubble_scale):
+		bubble_scale_slider.value = adjusted_bubble_scale
+		return
+	_apply_global_settings()
+
 func _on_global_toggle_changed(_enabled: bool) -> void:
 	_apply_global_settings()
 
@@ -388,9 +407,9 @@ func _apply_global_settings() -> void:
 
 	var current_settings: Dictionary = manager.get_global_desktop_settings().duplicate(true)
 	current_settings["base_opacity"] = opacity_slider.value / 100.0
-	current_settings["hover_opacity_multiplier"] = hover_multiplier_slider.value
 	current_settings["bubble_opacity"] = bubble_opacity_slider.value / 100.0
 	current_settings["character_scale"] = scale_slider.value / 100.0
+	current_settings["bubble_scale"] = bubble_scale_slider.value / 100.0
 	current_settings["vertical_movement_enabled"] = vertical_movement_check.button_pressed
 	current_settings["bubble_drag_enabled"] = bubble_drag_check.button_pressed
 

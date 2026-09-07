@@ -14,7 +14,7 @@
         "mood": "happy"
       },
       {
-        "text": "CRT양, 벌써 유저랑 말했어? (happy)칩도 같이 있을래!",
+        "text": "{user_name}과 벌써 친해진 거야? (happy)칩도 같이 있을래!",
         "mood": "curious"
       }
     ]
@@ -29,7 +29,7 @@
       "(curious)뭐 해? 칩도 구경해도 돼?",
       "칩은 지금 {user_name} 구경 중이야! (happy)",
       "조용하다. (curious)...집중하는 중이야?",
-      "CRT양은 저기 있나? (happy)있으면 같이 놀러 갈래.",
+      "CRT양도 같이 있네! (happy)셋이서 뭐 할까?",
       "아무것도 안 하면 뭐가 생겨? (curious)칩은 계속 보고 있을래."
     ],
     "timer_complete": [

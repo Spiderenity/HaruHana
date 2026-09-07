@@ -13,6 +13,7 @@ const DesktopSpeechTypewriterScript = preload("res://system/services/desktop/des
 const SegmentedBubbleBackgroundScript = preload("res://system/services/desktop/segmented_bubble_background.gd")
 const CharacterProfilesScript = preload("res://system/services/characters/character_profiles.gd")
 const UserProfileSettingsScript = preload("res://system/app/user_profile_settings.gd")
+const AISettingsScript = preload("res://system/services/ai/ai_settings.gd")
 
 const MENU_WIDTH: int = 276
 const MENU_MAX_HEIGHT: int = 360
@@ -74,6 +75,7 @@ var interactive_question_data: Dictionary = {}
 var interactive_question_timer: Timer = null
 var menu_idle_timer: Timer = null
 var normal_menu_active: bool = false
+var custom_talk_input: TextEdit = null
 
 func configure(actor: DesktopCharacterActor) -> void:
 	owner_actor = actor
@@ -423,6 +425,8 @@ func _default_page_description() -> String:
 			return _l("Talk", "대화")
 		"question":
 			return _l("Question", "질문")
+		"custom_talk":
+			return _current_model_display_name()
 		_:
 			if current_page.begins_with("talk_"):
 				return _talk_action_label(current_page.trim_prefix("talk_"))
@@ -443,7 +447,7 @@ func _talk_hover_description(action_id: String) -> String:
 		"hello": return _l("Hello", "인사")
 		"ask": return _l("Ask", "질문")
 		"praise": return _l("Praise", "칭찬")
-		"scold": return _l("Scold", "꾸짖기")
+		"free": return _current_model_display_name()
 		"back": return _l("Back", "뒤로")
 	return _default_page_description()
 
@@ -531,6 +535,7 @@ func _on_intro_finished() -> void:
 func _clear_content() -> void:
 	if content_host == null:
 		return
+	custom_talk_input = null
 	for child: Node in content_host.get_children():
 		if child is CanvasItem:
 			(child as CanvasItem).visible = false
@@ -642,7 +647,7 @@ func _show_talk_page(typewrite_heading: bool = true) -> void:
 	for action_info: Dictionary in [
 		{"id": "ask", "en": "Ask", "ko": "질문"},
 		{"id": "praise", "en": "Praise", "ko": "칭찬"},
-		{"id": "scold", "en": "Scold", "ko": "꾸짖기"},
+		{"id": "free", "en": "Free", "ko": "자유"},
 	]:
 		var action_id: String = str(action_info.get("id", ""))
 		var label: String = _l(
@@ -653,9 +658,12 @@ func _show_talk_page(typewrite_heading: bool = true) -> void:
 			label,
 			_talk_hover_description(action_id)
 		)
-		button.pressed.connect(
-			_show_talk_detail_page.bind(action_id)
-		)
+		if action_id == "free":
+			button.pressed.connect(_on_free_talk_pressed)
+		else:
+			button.pressed.connect(
+				_show_talk_detail_page.bind(action_id)
+			)
 		grid.add_child(button)
 
 	var back_label: String = _l("Back", "뒤로")
@@ -710,7 +718,7 @@ func _talk_options(action_id: String) -> Array[Dictionary]:
 			return [
 				{"id": "week", "en": "About this week", "ko": "이번 주에 대해"},
 				{"id": "self", "en": "About you", "ko": "너에 대해"},
-				{"id": "other", "en": "Something else", "ko": "다른 것"},
+				{"id": "controls", "en": "Controls", "ko": "조작 설명"},
 			]
 		"praise":
 			return [
@@ -718,20 +726,112 @@ func _talk_options(action_id: String) -> Array[Dictionary]:
 				{"id": "cute", "en": "You're cute", "ko": "귀여워"},
 				{"id": "thanks", "en": "Thank you", "ko": "고마워"},
 			]
-		"scold":
-			return [
-				{"id": "behave", "en": "Behave", "ko": "얌전히 해"},
-				{"id": "stop", "en": "Stop that", "ko": "그만해"},
-				{"id": "enough", "en": "Enough", "ko": "이제 됐어"},
-			]
 		_:
-			return [{"id": "other", "en": "Something else", "ko": "다른 것"}]
+			return []
+
+func _on_free_talk_pressed() -> void:
+	var settings: Dictionary = AISettingsScript.load_settings()
+	var api_key: String = str(settings.get("api_key", "")).strip_edges()
+	var model: String = str(settings.get("model", "")).strip_edges()
+	if api_key.is_empty() or model.is_empty():
+		hide_menu()
+		talk_action_requested.emit("custom_unavailable", "")
+		return
+	_show_custom_talk_page()
+
+func _current_model_display_name() -> String:
+	var model: String = AISettingsScript.get_model().strip_edges()
+	for preset: Dictionary in AISettingsScript.MODEL_PRESETS:
+		if str(preset.get("route", "")) == model:
+			return str(preset.get("label", model))
+	if model.contains("::"):
+		return model.get_slice("::", 1)
+	return model
+
+func _show_custom_talk_page() -> void:
+	_stop_menu_idle_timeout()
+	page_reveal_serial += 1
+	current_page = "custom_talk"
+	_clear_content()
+	intro_label.custom_minimum_size.y = 30.0
+	intro_label.text = _l("Free", "자유")
+	intro_label.visible_characters = -1
+	if description_label != null:
+		description_label.text = _current_model_display_name()
+	_set_header_revealed(true)
+
+	custom_talk_input = TextEdit.new()
+	custom_talk_input.name = "CustomTalkInput"
+	custom_talk_input.max_length = 2000
+	custom_talk_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	custom_talk_input.custom_minimum_size.y = 40.0
+	custom_talk_input.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	custom_talk_input.scroll_fit_content_height = true
+	custom_talk_input.placeholder_text = _l(
+		"Type a message...",
+		"메시지를 입력해 줘..."
+	)
+	custom_talk_input.theme = AppearanceSettingsScript.build_theme()
+	var input_style := StyleBoxFlat.new()
+	input_style.bg_color = AppearanceSettingsScript.get_ui_color("surface_alt")
+	input_style.set_corner_radius_all(8)
+	input_style.content_margin_left = 10.0
+	input_style.content_margin_right = 10.0
+	input_style.content_margin_top = 7.0
+	input_style.content_margin_bottom = 7.0
+	custom_talk_input.add_theme_stylebox_override("normal", input_style)
+	var input_focus_style: StyleBoxFlat = input_style.duplicate()
+	input_focus_style.bg_color = AppearanceSettingsScript.get_ui_color("surface_pressed")
+	custom_talk_input.add_theme_stylebox_override("focus", input_focus_style)
+	custom_talk_input.text_changed.connect(_on_custom_talk_text_changed)
+	content_host.add_child(custom_talk_input)
+
+	var send_button := _make_wide_button(
+		_l("Send", "보내기"),
+		_l("Send", "보내기")
+	)
+	send_button.pressed.connect(_submit_custom_talk)
+	content_host.add_child(send_button)
+
+	var back_button := _make_wide_button(
+		_l("Back", "뒤로"),
+		_talk_hover_description("back")
+	)
+	back_button.pressed.connect(_show_talk_page.bind(false))
+	content_host.add_child(back_button)
+
+	_set_content_revealed(true)
+	_request_window_geometry_refresh()
+	custom_talk_input.call_deferred("grab_focus")
+
+func _on_custom_talk_text_changed() -> void:
+	if custom_talk_input == null:
+		return
+	var visual_lines: int = 0
+	for line_index: int in range(custom_talk_input.get_line_count()):
+		visual_lines += 1 + custom_talk_input.get_line_wrap_count(line_index)
+	custom_talk_input.custom_minimum_size.y = clampf(
+		40.0 + float(maxi(0, visual_lines - 1)) * 20.0,
+		40.0,
+		120.0
+	)
+	_request_window_geometry_refresh()
+
+func _submit_custom_talk() -> void:
+	if custom_talk_input == null:
+		return
+	var message: String = custom_talk_input.text.strip_edges()
+	if message.is_empty():
+		custom_talk_input.grab_focus()
+		return
+	hide_menu()
+	talk_action_requested.emit("custom", message)
 
 func _talk_action_label(action_id: String) -> String:
 	match action_id:
 		"ask": return _l("Ask", "질문")
 		"praise": return _l("Praise", "칭찬")
-		"scold": return _l("Scold", "꾸짖기")
+		"free": return _l("Free", "자유")
 		_: return _l("Talk", "대화")
 
 func _make_icon_button(tab_name: String, hover_label: String, fallback_text: String) -> Button:

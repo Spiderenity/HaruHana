@@ -16,6 +16,7 @@ var character_event_dialogue: CharacterEventDialogue = null
 var generated_pools: Dictionary = {}
 var pending_requests: Dictionary = {}
 var retry_after_msec: Dictionary = {}
+var pending_custom_replies: Dictionary = {}
 
 func configure(
 	manager: DesktopCharacterManager,
@@ -24,10 +25,19 @@ func configure(
 	character_manager = manager
 	character_event_dialogue = event_dialogue
 
+func _l(english: String, korean: String) -> String:
+	return AppLanguageScript.text(english, korean)
+
 func invalidate_cache() -> void:
+	if character_manager != null:
+		for character_id_value: Variant in pending_custom_replies.values():
+			character_manager.set_character_response_loading(
+				str(character_id_value), "menu", false
+			)
 	generated_pools.clear()
 	pending_requests.clear()
 	retry_after_msec.clear()
+	pending_custom_replies.clear()
 
 func refresh_cast() -> void:
 	if character_manager == null:
@@ -120,6 +130,22 @@ func handle_action(character_id: String, action: String, detail: String) -> void
 	var actor: DesktopCharacterActor = character_manager.get_actor(character_id)
 	if actor == null:
 		return
+	var clean_action: String = action.strip_edges().to_lower()
+	var clean_detail: String = detail.strip_edges().to_lower()
+	if clean_action == "custom_unavailable":
+		_show_custom_reply(character_id, {})
+		return
+	if clean_action == "custom":
+		_request_custom_reply(character_id, detail, actor)
+		return
+	if clean_action == "ask" and clean_detail == "controls":
+		var controls: Dictionary = _get_controls_reaction(character_id)
+		actor.show_speech(
+			str(controls.get("text", "")),
+			float(controls.get("duration", 8.0)),
+			str(controls.get("mood", "neutral"))
+		)
+		return
 	var stock: Dictionary = _get_stock_reaction(character_id, action, detail)
 	var reaction: Dictionary = _take_generated_reaction(character_id, action, detail)
 	if reaction.is_empty():
@@ -130,6 +156,134 @@ func handle_action(character_id: String, action: String, detail: String) -> void
 		str(reaction.get("mood", "neutral"))
 	)
 	ensure_prefetch(character_id, _menu_key(action, detail))
+
+func _get_controls_reaction(character_id: String) -> Dictionary:
+	var text: String = ""
+	var mood: String = "neutral"
+	match character_id:
+		"crt":
+			text = _l(
+				"Hover over me to reveal ☰, then grab it to move me. Hold Alt or leave the pointer still over me to make me transparent and click-through. Vertical movement can be enabled in Settings.",
+				"마우스를 올리면 ☰가 나타나. 그걸 잡으면 나를 옮길 수 있어. Alt를 누르거나 마우스를 내 위에 가만히 두면 투명해지고 클릭이 통과해. 세로 이동은 설정에서 켤 수 있어."
+			)
+		"chip":
+			mood = "happy"
+			text = _l(
+				"Hover over Chip to reveal ☰, then grab it to move Chip! Hold Alt or leave the pointer still over Chip to become transparent and click-through. Vertical movement can be enabled in Settings!",
+				"칩 위에 마우스를 올리면 ☰가 나타나! 그걸 잡으면 칩을 옮길 수 있어. Alt를 누르거나 칩 위에서 마우스를 가만히 두면 투명해지고 클릭이 통과해. 세로 이동은 설정에서 켤 수 있어!"
+			)
+		_:
+			text = _l(
+				"Hover over the character to reveal ☰, then grab it to move the character. Hold Alt or leave the pointer still over the character for transparency and click-through. Vertical movement can be enabled in Settings.",
+				"캐릭터 위에 마우스를 올리면 ☰가 나타나. 그걸 잡으면 캐릭터를 옮길 수 있어. Alt를 누르거나 캐릭터 위에서 마우스를 가만히 두면 투명해지고 클릭이 통과해. 세로 이동은 설정에서 켤 수 있어."
+			)
+	return {
+		"text": "(" + mood + ")" + text,
+		"mood": mood,
+		"duration": 8.0,
+	}
+
+func _request_custom_reply(
+	character_id: String,
+	user_text: String,
+	actor: DesktopCharacterActor
+) -> void:
+	user_text = user_text.strip_edges()
+	if user_text.is_empty() or character_event_dialogue == null:
+		return
+	var waiting: Dictionary = _get_custom_waiting_reaction(character_id)
+	actor.show_speech(
+		str(waiting.get("text", "...")),
+		RESPONSE_DURATION,
+		str(waiting.get("mood", "curious"))
+	)
+	var request_id: int = int(
+		character_event_dialogue.request_custom_menu_reply(
+			character_id,
+			user_text
+		)
+	)
+	if request_id <= 0:
+		_show_custom_reply(character_id, {})
+		return
+	pending_custom_replies[request_id] = character_id
+	character_manager.set_character_response_loading(character_id, "menu", true)
+
+func _on_custom_menu_reply_ready(
+	request_id: int,
+	character_id: String,
+	dialogue: Dictionary
+) -> void:
+	if not pending_custom_replies.has(request_id):
+		return
+	var expected_character_id: String = str(
+		pending_custom_replies[request_id]
+	)
+	pending_custom_replies.erase(request_id)
+	if character_manager != null:
+		character_manager.set_character_response_loading(
+			expected_character_id, "menu", false
+		)
+	if expected_character_id != character_id:
+		return
+	_show_custom_reply(character_id, dialogue)
+
+func _show_custom_reply(character_id: String, dialogue: Dictionary) -> void:
+	if character_manager == null:
+		return
+	var actor: DesktopCharacterActor = character_manager.get_actor(character_id)
+	if actor == null:
+		return
+	var reaction: Dictionary = dialogue
+	if reaction.is_empty():
+		reaction = _get_custom_failure_reaction(character_id)
+	actor.show_speech(
+		str(reaction.get("text", "")),
+		float(reaction.get("duration", RESPONSE_DURATION)),
+		str(reaction.get("mood", "neutral"))
+	)
+
+func _get_custom_waiting_reaction(character_id: String) -> Dictionary:
+	match character_id:
+		"crt":
+			return {
+				"text": _l("Wait. I'm thinking.", "잠깐. 생각 중이야."),
+				"mood": "curious",
+			}
+		"chip":
+			return {
+				"text": _l("Hmm... Chip will think!", "음... 칩이 생각해 볼게!"),
+				"mood": "curious",
+			}
+		_:
+			return {"text": _l("One moment.", "잠깐만."), "mood": "curious"}
+
+func _get_custom_failure_reaction(character_id: String) -> Dictionary:
+	match character_id:
+		"crt":
+			return {
+				"text": _l(
+					"I need the AI settings first. Check the key in Settings.",
+					"AI 설정이 먼저 필요해. 설정에서 키를 확인해 줘."
+				),
+				"mood": "annoyed",
+			}
+		"chip":
+			return {
+				"text": _l(
+					"Oh! Chip can't answer yet. Check the AI settings first!",
+					"앗! 칩은 아직 대답할 수 없어. AI 설정부터 확인해 줘!"
+				),
+				"mood": "worried",
+			}
+		_:
+			return {
+				"text": _l(
+					"Check the AI settings first.",
+					"AI 설정을 먼저 확인해 줘."
+				),
+				"mood": "worried",
+			}
 
 func _on_menu_response_bundle_ready(
 	request_id: int,
@@ -365,12 +519,6 @@ func _get_crt_stock_reaction(
 						_:
 							mood = "embarrassed"
 							lines = _stock_lines([["You want me to introduce myself again? CRT. The one who's here beside you. You know what I mean by now, {user_name}.", "또 자기소개해 달라는 거야?\nCRT양. 네 옆에 있는 애.\n...이제 그 정도면 알아듣잖아, {user_name}."]])
-				"other":
-					mood = "curious"
-					lines = _stock_lines([
-						["Something else? Go on.", "다른 거? 말해 봐."],
-						["All right. What is it?", "그래. 뭔데?"],
-					])
 				_:
 					lines = _stock_lines([["Go on.", "말해 봐."]])
 		"praise":
@@ -399,29 +547,6 @@ func _get_crt_stock_reaction(
 						_: lines = _stock_lines([["Yeah. If you need something again, tell me.", "응. 다음에도 필요하면 말해."]])
 				_:
 					lines = _stock_lines([["Thanks.", "고마워."]])
-		"scold":
-			mood = "annoyed"
-			match detail:
-				"behave":
-					match friendship_level:
-						0: lines = _stock_lines([["I'm already behaving.", "나 지금 충분히 얌전하거든."]])
-						1: lines = _stock_lines([["What, do you think I'm Chip?", "내가 칩인 줄 알아?"]])
-						2: lines = _stock_lines([["All right. You don't have to nag me.", "알았어. 괜히 잔소리하긴."]])
-						_: lines = _stock_lines([["Fine, I'll behave. For a while.", "그래, 얌전히 있을게. 잠깐은."]])
-				"stop":
-					match friendship_level:
-						0: lines = _stock_lines([["Fine. I'll stop.", "알았어. 그만하면 되잖아."]])
-						1: lines = _stock_lines([["Okay. I won't.", "그래, 안 해."]])
-						2: lines = _stock_lines([["All right. That's enough.", "알았어. 거기까지."]])
-						_: lines = _stock_lines([["Yeah. I'll stop.", "응. 그만할게."]])
-				"enough":
-					match friendship_level:
-						0: lines = _stock_lines([["Fine. That's enough.", "그래. 됐어."]])
-						1: lines = _stock_lines([["All right, that's it.", "알았어, 여기까지."]])
-						2: lines = _stock_lines([["Yeah. I'll leave it there.", "응. 이쯤에서 그만할게."]])
-						_: lines = _stock_lines([["All right. That's enough for now.", "알았어. 그럼 여기까지 할게."]])
-				_:
-					lines = _stock_lines([["All right.", "알았어."]])
 		_:
 			lines = _stock_lines([["Go on.", "말해 봐."]])
 
@@ -489,12 +614,6 @@ func _get_chip_stock_reaction(
 						_:
 							mood = "happy"
 							lines = _stock_lines([["Who is Chip? You know that too, {user_name}! Chip is the chip that stays by {user_name} with CRT.", "칩이 누구냐고?\n{user_name}도 알잖아!\n칩은 {user_name} 옆에서 CRT양이랑 같이 있는 칩이야."]])
-				"other":
-					mood = "curious"
-					lines = _stock_lines([
-						["Something else? Tell Chip!", "다른 거? 칩한테 말해 봐!"],
-						["Oh, something else! Go ahead!", "오, 다른 거! 말해 봐!"],
-					])
 				_:
 					lines = _stock_lines([["Tell Chip!", "칩한테 말해 봐!"]])
 		"praise":
@@ -521,29 +640,6 @@ func _get_chip_stock_reaction(
 						_: lines = _stock_lines([["Chip heard that! You're welcome!", "칩 들었어! 별말을!"]])
 				_:
 					lines = _stock_lines([["Yeah!", "응!"]])
-		"scold":
-			mood = "worried"
-			match detail:
-				"behave":
-					match friendship_level:
-						0: lines = _stock_lines([["Okay! Chip will stay still!", "알았어! 가만히 있을게!"]])
-						1: lines = _stock_lines([["Yeah! Chip will behave!", "응! 얌전히 있을게!"]])
-						2: lines = _stock_lines([["Okay! Chip will behave this time!", "알았어! 이번엔 얌전히 있을게!"]])
-						_: lines = _stock_lines([["Okay! Chip will stay quietly by {user_name}!", "알았어! {user_name} 옆에 조용히 있을게!"]])
-				"stop":
-					match friendship_level:
-						0: lines = _stock_lines([["Ah, okay! Chip will stop.", "앗, 알았어! 멈출게."]])
-						1: lines = _stock_lines([["Yeah! Chip will stop!", "응! 그만할게!"]])
-						2: lines = _stock_lines([["Okay, Chip won't do it anymore!", "알았어, 이제 안 해!"]])
-						_: lines = _stock_lines([["Yeah! Chip stopped right away!", "응! 바로 멈췄어!"]])
-				"enough":
-					match friendship_level:
-						0: lines = _stock_lines([["Yeah! That's it!", "응! 여기까지!"]])
-						1: lines = _stock_lines([["Okay! All done!", "알았어! 이제 끝!"]])
-						2: lines = _stock_lines([["Yeah, Chip will stop now!", "응, 그럼 그만할게!"]])
-						_: lines = _stock_lines([["Okay! That's enough for now!", "알았어! 지금은 여기까지!"]])
-				_:
-					lines = _stock_lines([["Okay!", "알았어!"]])
 		_:
 			lines = _stock_lines([["Tell Chip!", "칩한테 말해 봐!"]])
 
@@ -561,9 +657,6 @@ func _get_default_stock_reaction(action: String) -> Dictionary:
 		"praise":
 			mood = "happy"
 			lines = _stock_lines([["Thanks.", "고마워."]])
-		"scold":
-			mood = "annoyed"
-			lines = _stock_lines([["All right.", "알았어."]])
 		_:
 			lines = _stock_lines([["Go on.", "말해 봐."]])
 	return _pick_stock_reaction(lines, mood)
@@ -608,4 +701,4 @@ func _resolve_user_name(text: String) -> String:
 	var user_name: String = UserProfileSettingsScript.get_user_name()
 	if user_name.is_empty():
 		user_name = AppLanguageScript.text("user", "유저")
-	return text.replace("{user_name}", user_name)
+	return UserProfileSettingsScript.replace_user_name_placeholder(text, user_name)

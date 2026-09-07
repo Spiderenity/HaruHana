@@ -498,7 +498,11 @@ static func get_fallback_line(
 	if user_name.is_empty():
 		var output_language: String = get_pack_output_language(get_current_pack())
 		user_name = "너" if output_language == "ko" else "you"
-	resolved_replacements["{user_name}"] = user_name
+	result = UserProfileSettingsScript.replace_user_name_placeholder(
+		result,
+		user_name
+	)
+	resolved_replacements.erase("{user_name}")
 
 	for replacement_key: Variant in resolved_replacements.keys():
 		result = result.replace(

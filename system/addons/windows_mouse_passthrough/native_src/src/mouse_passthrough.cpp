@@ -98,16 +98,6 @@ void MousePassthrough::apply_passthrough(
     }
 
     SetWindowLongPtr(target.hwnd, GWL_EXSTYLE, extended_style);
-    SetWindowPos(
-        target.hwnd,
-        nullptr,
-        0,
-        0,
-        0,
-        0,
-        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE |
-            SWP_NOZORDER | SWP_NOACTIVATE
-    );
 }
 
 void MousePassthrough::unregister_target(

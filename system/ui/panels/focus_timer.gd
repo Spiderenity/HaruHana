@@ -34,6 +34,12 @@ signal session_finished(
 	planned_minutes: int
 )
 
+signal session_time_updated(
+	seconds_remaining: int,
+	active: bool,
+	paused: bool
+)
+
 const DEFAULT_MINUTES := 25.0
 const DEFAULT_TASK_NAME := "Focus session"
 const LOCKED_CONTROL_TINT := Color(0.62, 0.62, 0.62, 1.0)
@@ -57,6 +63,9 @@ var reset_button: Button
 
 var preset_buttons: Array[Button] = []
 var last_finished_task_name: String = ""
+var last_emitted_seconds: int = -1
+var last_emitted_active: bool = false
+var last_emitted_paused: bool = false
 
 func _ready() -> void:
 	add_theme_constant_override(
@@ -652,6 +661,18 @@ func update_display(
 		minutes,
 		seconds
 	]
+
+	var active: bool = countdown != null and not countdown.is_stopped()
+	var paused: bool = active and countdown.paused
+	if (
+		total_seconds != last_emitted_seconds
+		or active != last_emitted_active
+		or paused != last_emitted_paused
+	):
+		last_emitted_seconds = total_seconds
+		last_emitted_active = active
+		last_emitted_paused = paused
+		session_time_updated.emit(total_seconds, active, paused)
 
 func _process(
 	_delta: float

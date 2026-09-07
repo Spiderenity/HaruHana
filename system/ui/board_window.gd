@@ -26,6 +26,12 @@ signal focus_session_completed(
 	planned_minutes: int
 )
 
+signal focus_timer_updated(
+	seconds_remaining: int,
+	active: bool,
+	paused: bool
+)
+
 signal chat_exchange_completed(
 	character_id: String,
 	user_message: String,
@@ -87,10 +93,6 @@ const CalendarPanelScript = preload(
 	"res://system/ui/panels/calendar_panel.gd"
 )
 
-const WeeklyProductivityPanelScript = preload(
-	"res://system/ui/panels/weekly_productivity.gd"
-)
-
 const SettingsPanelScript = preload(
 	"res://system/ui/panels/settings_panel.gd"
 )
@@ -110,7 +112,6 @@ const AppearanceSettingsScript = preload(
 var chat_panel: CompanionChatPanel = null
 var focus_timer_panel: FocusTimerPanel = null
 var calendar_panel: CalendarPanel = null
-var weekly_panel: WeeklyProductivityPanel = null
 var settings_panel: CompanionSettingsPanel = null
 var interface_panel: PanelContainer = null
 var content_surface_panel: PanelContainer = null
@@ -132,6 +133,7 @@ var settings_tab_index: int = -1
 var debug_tab_index: int = -1
 var debug_unlocked: bool = false
 var debug_panel: CompanionDebugPanel = null
+var last_non_debug_tab_index: int = 1
 
 var language_refresh_accumulator: float = 0.0
 var last_interface_language: String = ""
@@ -365,7 +367,6 @@ func create_tabs(
 	create_chat_tab(tabs)
 	create_timer_tab(tabs)
 	create_calendar_tab(tabs)
-	create_week_tab(tabs)
 	create_memo_tab(tabs)
 	create_settings_tab(tabs)
 
@@ -375,6 +376,7 @@ func create_tabs(
 	debug_tab_index = tabs.get_child_count() - 1
 	tabs.set_tab_hidden(debug_tab_index, true)
 	tabs.current_tab = 1
+	last_non_debug_tab_index = tabs.current_tab
 
 	navigation_separator = ColorRect.new()
 	navigation_separator.custom_minimum_size.x = 1.0
@@ -449,13 +451,15 @@ func _on_index_tab_pressed(tab_index: int) -> void:
 		return
 
 	tabs.current_tab = tab_index
+	if tab_index == debug_tab_index:
+		debug_action_requested.emit("progress_show", 0)
 	_sync_index_tab_buttons()
 
-func _on_tab_changed(_tab_index: int) -> void:
+func _on_tab_changed(tab_index: int) -> void:
+	if tab_index != debug_tab_index:
+		last_non_debug_tab_index = tab_index
 	_sync_index_tab_buttons()
 	_refresh_memo_prompt()
-	_normalize_weekly_panel_header()
-	call_deferred("_setup_weekly_productivity_tracking")
 
 func _sync_index_tab_buttons() -> void:
 	if tabs == null:
@@ -557,11 +561,12 @@ func _toggle_debug_tab() -> void:
 	):
 		index_tab_buttons[debug_tab_index].visible = debug_unlocked
 
-	if debug_unlocked:
-		tabs.current_tab = debug_tab_index
-		debug_action_requested.emit("progress_show", 0)
-	elif tabs.current_tab == debug_tab_index:
-		tabs.current_tab = settings_tab_index
+	if not debug_unlocked and tabs.current_tab == debug_tab_index:
+		tabs.current_tab = clampi(
+			last_non_debug_tab_index,
+			0,
+			tabs.get_tab_count() - 1
+		)
 
 	_sync_index_tab_buttons()
 
@@ -946,6 +951,10 @@ func create_timer_tab(
 		_on_focus_session_finished
 	)
 
+	focus_timer_panel.session_time_updated.connect(
+		_on_focus_timer_updated
+	)
+
 func create_calendar_tab(
 	target_tabs: TabContainer
 ) -> void:
@@ -981,213 +990,6 @@ func _apply_calendar_appearance() -> void:
 		return
 
 	calendar_panel.apply_appearance()
-
-func create_week_tab(
-	target_tabs: TabContainer
-) -> void:
-
-	weekly_panel = (
-		WeeklyProductivityPanelScript.new()
-	)
-
-	add_scrollable_tab(
-		target_tabs,
-		"Week",
-		weekly_panel
-	)
-
-	call_deferred("_normalize_weekly_panel_header")
-	call_deferred("_setup_weekly_productivity_tracking")
-
-func _normalize_weekly_panel_header() -> void:
-	if weekly_panel == null or not is_instance_valid(weekly_panel):
-		return
-
-	if weekly_panel is VBoxContainer:
-		(weekly_panel as VBoxContainer).add_theme_constant_override("separation", AppearanceSettingsScript.UI_STACK_GAP)
-
-	var first_label: Label = null
-	var second_label: Label = null
-	var first_separator: HSeparator = null
-
-	for child: Node in weekly_panel.get_children():
-		if child is Label:
-			if first_label == null:
-				first_label = child as Label
-			elif second_label == null:
-				second_label = child as Label
-		elif child is HSeparator and first_separator == null:
-			first_separator = child as HSeparator
-
-	if first_label != null:
-		first_label.text = _l("Week", "주간")
-		first_label.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_LARGE)
-
-	if second_label != null:
-		second_label.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_SMALL)
-		second_label.remove_theme_color_override("font_color")
-
-	_normalize_weekly_typography(weekly_panel, first_label, second_label)
-
-	if first_separator == null:
-		first_separator = HSeparator.new()
-		weekly_panel.add_child(first_separator)
-
-	weekly_panel.move_child(first_separator, mini(2, weekly_panel.get_child_count() - 1))
-
-func _normalize_weekly_typography(node: Node, title_label: Label, description_label: Label) -> void:
-	for child: Node in node.get_children():
-		if child == title_label or child == description_label:
-			continue
-		if child is Label or child is Button or child is OptionButton or child is LineEdit:
-			(child as Control).add_theme_font_size_override(
-				"font_size",
-				AppearanceSettingsScript.UI_FONT_MEDIUM
-			)
-		_normalize_weekly_typography(child, title_label, description_label)
-
-func _setup_weekly_productivity_tracking() -> void:
-	if weekly_panel == null or not is_instance_valid(weekly_panel):
-		return
-
-	if not weekly_panel.productivity_status_changed.is_connected(_on_productivity_status_changed):
-		weekly_panel.productivity_status_changed.connect(_on_productivity_status_changed)
-
-	var selectors: Array[OptionButton] = []
-	_collect_weekly_status_selectors(weekly_panel, selectors)
-	for selector: OptionButton in selectors:
-		if not bool(selector.get_meta("_productive_tracking_connected", false)):
-			selector.item_selected.connect(
-				Callable(self, "_on_weekly_status_selected").bind(selector)
-			)
-			selector.set_meta("_productive_tracking_connected", true)
-
-	_refresh_weekly_productive_highlights()
-
-func _collect_weekly_status_selectors(node: Node, result: Array[OptionButton]) -> void:
-	for child: Node in node.get_children():
-		if child is OptionButton:
-			result.append(child as OptionButton)
-		_collect_weekly_status_selectors(child, result)
-
-func _on_weekly_status_selected(_index: int, _selector: OptionButton) -> void:
-	call_deferred("_refresh_weekly_productive_highlights")
-
-func _on_productivity_status_changed(_date_key: String, _status: int) -> void:
-	_refresh_weekly_productive_highlights()
-
-func _refresh_weekly_productive_highlights() -> void:
-	if weekly_panel == null or not is_instance_valid(weekly_panel):
-		return
-
-	var selectors: Array[OptionButton] = []
-	_collect_weekly_status_selectors(weekly_panel, selectors)
-	var productive_date_keys: Array[String] = weekly_panel.get_productive_date_keys()
-
-	for selector: OptionButton in selectors:
-		var row: Control = _find_weekly_status_row(selector)
-		if row == null:
-			continue
-
-		var labels: Array[Label] = []
-		_collect_labels(row, labels)
-		var weekday_label: Label = null
-		var date_key: String = ""
-
-		for label: Label in labels:
-			var clean_text: String = label.text.strip_edges()
-			if _looks_like_iso_date(clean_text):
-				date_key = clean_text
-			elif weekday_label == null and _looks_like_weekday_name(clean_text):
-				weekday_label = label
-
-		if weekday_label == null or date_key.is_empty():
-			continue
-
-		var productive: bool = selector.selected == WeeklyProductivityPanel.STATUS_PRODUCTIVE
-		_style_productive_weekday_label(weekday_label, productive)
-
-	if calendar_panel != null and is_instance_valid(calendar_panel):
-		calendar_panel.set_productive_dates(productive_date_keys)
-
-func _find_weekly_status_row(node: Node) -> Control:
-	var cursor: Node = node.get_parent()
-	while cursor != null and cursor != weekly_panel:
-		if cursor is HBoxContainer:
-			var labels: Array[Label] = []
-			_collect_labels(cursor, labels)
-			for label: Label in labels:
-				if _looks_like_iso_date(label.text.strip_edges()):
-					return cursor as Control
-		cursor = cursor.get_parent()
-	return null
-
-func _collect_labels(node: Node, result: Array[Label]) -> void:
-	for child: Node in node.get_children():
-		if child is Label:
-			result.append(child as Label)
-		_collect_labels(child, result)
-
-func _looks_like_iso_date(text: String) -> bool:
-	if text.length() != 10:
-		return false
-	if text.substr(4, 1) != "-" or text.substr(7, 1) != "-":
-		return false
-	var compact: String = text.replace("-", "")
-	return compact.is_valid_int()
-
-func _looks_like_weekday_name(text: String) -> bool:
-	var lower: String = text.to_lower()
-	if lower in ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]:
-		return true
-	if lower in ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]:
-		return true
-	return text in ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"]
-
-func _style_productive_weekday_label(label: Label, productive: bool) -> void:
-	label.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_MEDIUM)
-
-	var wrapper: PanelContainer = null
-	var parent: Node = label.get_parent()
-	if parent is PanelContainer and parent.name == "ProductiveWeekdayChip":
-		wrapper = parent as PanelContainer
-	else:
-		if parent == null:
-			return
-		var old_index: int = label.get_index()
-		var old_minimum: Vector2 = label.custom_minimum_size
-		var old_h_flags: int = label.size_flags_horizontal
-		var old_v_flags: int = label.size_flags_vertical
-
-		parent.remove_child(label)
-		wrapper = PanelContainer.new()
-		wrapper.name = "ProductiveWeekdayChip"
-		wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		wrapper.custom_minimum_size = old_minimum
-		wrapper.size_flags_horizontal = old_h_flags
-		wrapper.size_flags_vertical = old_v_flags
-		parent.add_child(wrapper)
-		parent.move_child(wrapper, old_index)
-
-		label.custom_minimum_size = Vector2.ZERO
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		wrapper.add_child(label)
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = (
-		AppearanceSettingsScript.get_ui_color("selection")
-		if productive
-		else Color(0.0, 0.0, 0.0, 0.0)
-	)
-	style.corner_radius_top_left = 8
-	style.corner_radius_top_right = 8
-	style.corner_radius_bottom_left = 8
-	style.corner_radius_bottom_right = 8
-	style.content_margin_left = 8.0
-	style.content_margin_right = 8.0
-	style.content_margin_top = 3.0
-	style.content_margin_bottom = 3.0
-	wrapper.add_theme_stylebox_override("panel", style)
 
 func create_memo_tab(
 	target_tabs: TabContainer
@@ -1361,10 +1163,6 @@ func create_settings_tab(
 	if not settings_panel.interface_language_changed.is_connected(_on_settings_interface_language_changed):
 		settings_panel.interface_language_changed.connect(_on_settings_interface_language_changed)
 
-	settings_panel.export_week_requested.connect(
-		_on_export_week_requested
-	)
-
 func _on_settings_interface_language_changed(
 	_language: String
 ) -> void:
@@ -1389,8 +1187,6 @@ func _apply_interface_language(
 		focus_timer_panel.apply_language()
 	if calendar_panel != null and is_instance_valid(calendar_panel):
 		calendar_panel.apply_language()
-	if weekly_panel != null and is_instance_valid(weekly_panel):
-		weekly_panel.apply_language()
 	if settings_panel != null and is_instance_valid(settings_panel):
 		settings_panel.apply_language()
 
@@ -1412,7 +1208,6 @@ func _apply_interface_language(
 	if memo_title_label != null:
 		memo_title_label.text = _l("Memo", "메모")
 	_refresh_memo_prompt()
-	_normalize_weekly_panel_header()
 	if memo_edit != null:
 		memo_edit.placeholder_text = _l(
 			"Write anything you want to keep here...",
@@ -1495,29 +1290,20 @@ func _on_focus_session_finished(
 	planned_minutes: int
 ) -> void:
 
-	if weekly_panel != null:
-		weekly_panel.record_focus_session(
-			task_name,
-			planned_minutes
-		)
+	if calendar_panel != null and is_instance_valid(calendar_panel):
+		calendar_panel.record_focus_session(planned_minutes)
 
 	focus_session_completed.emit(
 		task_name,
 		planned_minutes
 	)
 
-func _on_export_week_requested() -> void:
-	if weekly_panel == null:
-		settings_panel.show_export_result("")
-		return
-
-	var report_path: String = (
-		weekly_panel.export_current_week_snapshot()
-	)
-
-	settings_panel.show_export_result(
-		report_path
-	)
+func _on_focus_timer_updated(
+	seconds_remaining: int,
+	active: bool,
+	paused: bool
+) -> void:
+	focus_timer_updated.emit(seconds_remaining, active, paused)
 
 func open_tab(
 	tab_name: String

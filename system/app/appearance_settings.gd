@@ -35,8 +35,7 @@ const DEFAULT_BUBBLE_SKIN: String = "res://assets/bubbles/default"
 const DEFAULT_BUBBLE_TEXT_COLOR: String = "#5F5F5F"
 const BUBBLE_CONFIG_FILENAME: String = "bubble.json"
 
-const FONT_DIRECTORY: String = "res://assets/fonts"
-const USER_FONT_DIRECTORY: String = "user://fonts"
+const BUILTIN_FONT_DIRECTORY: String = "res://assets/fonts"
 const BUBBLE_DIRECTORY: String = "res://assets/bubbles"
 
 const FONT_EXTENSIONS: Array[String] = [
@@ -252,7 +251,17 @@ static func _normalize_font_path(value: String) -> String:
 	var legacy_key: String = cleaned.to_lower()
 
 	if LEGACY_FONT_PATHS.has(legacy_key):
-		return str(LEGACY_FONT_PATHS[legacy_key])
+		cleaned = str(LEGACY_FONT_PATHS[legacy_key])
+
+	if (
+		cleaned.begins_with(BUILTIN_FONT_DIRECTORY + "/")
+		and cleaned != DEFAULT_BUBBLE_FONT
+	):
+		var external_path: String = get_external_font_directory_path().path_join(
+			cleaned.get_file()
+		)
+		if FileAccess.file_exists(external_path):
+			return external_path
 
 	return cleaned
 
@@ -268,25 +277,31 @@ static func _ensure_directory(path: String) -> Error:
 	return error
 
 static func ensure_user_directories() -> void:
-	_ensure_directory(USER_FONT_DIRECTORY)
+	_ensure_directory(get_external_font_directory_path())
 	_ensure_directory(get_user_bubble_directory_path())
 
 static func get_available_fonts() -> Array[Dictionary]:
 	ensure_user_directories()
 
 	var paths: Array[String] = []
-	_collect_files(FONT_DIRECTORY, FONT_EXTENSIONS, paths)
-	_collect_files(USER_FONT_DIRECTORY, FONT_EXTENSIONS, paths)
+	_collect_files(get_external_font_directory_path(), FONT_EXTENSIONS, paths)
 	paths.sort()
 
 	var result: Array[Dictionary] = []
 	var used_labels: Dictionary = {}
+	if _font_path_exists(DEFAULT_BUBBLE_FONT):
+		var default_label: String = DEFAULT_BUBBLE_FONT.get_file().get_basename()
+		used_labels[default_label.to_lower()] = true
+		result.append({
+			"label": default_label,
+			"path": DEFAULT_BUBBLE_FONT
+		})
 
 	for path: String in paths:
 		var label: String = path.get_file().get_basename()
 
 		if used_labels.has(label.to_lower()):
-			label += " (User)" if path.begins_with("user://") else " (Built-in)"
+			label += " (External)"
 
 		used_labels[label.to_lower()] = true
 		result.append({
@@ -333,9 +348,8 @@ static func get_round_ui_font() -> Font:
 
 	return font
 
-static func get_user_font_directory_path() -> String:
-	ensure_user_directories()
-	return ProjectSettings.globalize_path(USER_FONT_DIRECTORY)
+static func get_external_font_directory_path() -> String:
+	return DistributionPathsScript.get_fonts_directory()
 
 static func _load_font(path: String) -> Font:
 	if path.is_empty():

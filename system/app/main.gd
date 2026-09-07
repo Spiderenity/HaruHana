@@ -144,6 +144,17 @@ func _process(delta: float) -> void:
 	if overlap_controller != null:
 		overlap_controller.update(delta)
 
+func set_character_response_loading(
+	character_id: String,
+	source: String,
+	loading: bool
+) -> void:
+	desktop_character_manager.set_character_response_loading(
+		character_id,
+		source,
+		loading
+	)
+
 func request_update_shutdown() -> void:
 	if exit_controller != null:
 		exit_controller.request_system_close()
@@ -444,6 +455,9 @@ func connect_runtime_signals() -> void:
 	board_window.focus_session_resumed.connect(focus_controller._on_focus_session_resumed)
 	board_window.focus_session_stopped.connect(focus_controller._on_focus_session_stopped)
 	board_window.focus_session_completed.connect(focus_controller._on_focus_session_completed)
+	board_window.focus_timer_updated.connect(
+		desktop_character_manager.set_focus_timer_state
+	)
 	board_window.chat_exchange_completed.connect(_on_chat_exchange_completed)
 	board_window.schedules_changed.connect(schedule_controller._on_schedules_changed)
 
@@ -461,6 +475,9 @@ func connect_runtime_signals() -> void:
 	)
 	character_event_dialogue.menu_response_bundle_ready.connect(
 		menu_talk_controller._on_menu_response_bundle_ready
+	)
+	character_event_dialogue.custom_menu_reply_ready.connect(
+		menu_talk_controller._on_custom_menu_reply_ready
 	)
 	character_event_dialogue.schedule_dialogue_ready.connect(
 		schedule_controller._on_schedule_event_dialogue_ready

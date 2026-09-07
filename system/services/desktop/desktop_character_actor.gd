@@ -103,6 +103,7 @@ const DialogueCatalogScript = preload(
 
 const DEFAULT_MOOD: String = DialogueCatalogScript.DEFAULT_MOOD
 const VALID_MOODS: Array[String] = DialogueCatalogScript.EXTENDED_MOODS
+const OFFSCREEN_WINDOW_POSITION: Vector2i = Vector2i(-32000, -32000)
 
 @export var character_id: String = ""
 
@@ -160,8 +161,8 @@ var speech_typewriter: DesktopSpeechTypewriter = null
 var speech_hold_duration: float = 5.0
 
 var desktop_base_opacity: float = 0.82
-var desktop_hover_opacity_multiplier: float = 1.20
 var desktop_character_scale: float = 1.0
+var desktop_speech_bubble_scale: float = 1.0
 var current_character_alpha: float = 0.82
 
 var speech_bubble_height_locked: bool = false
@@ -176,6 +177,19 @@ var segmented_bubble_background: SegmentedBubbleBackground = null
 var speech_bubble_window: Window = null
 var speech_bubble_top_close_window: Window = null
 var speech_bubble_top_close_surface: Control = null
+var focus_timer_window: Window = null
+var focus_timer_panel: PanelContainer = null
+var focus_status_box: HBoxContainer = null
+var focus_timer_label: Label = null
+var response_loading_label: Label = null
+var focus_timer_window_id: int = -1
+var focus_timer_seconds_remaining: int = 0
+var focus_timer_active: bool = false
+var focus_timer_paused: bool = false
+var response_loading_sources: Dictionary = {}
+var response_loading_frame: int = 0
+var response_loading_elapsed: float = 0.0
+var last_focus_timer_appearance_signature: String = ""
 var speech_bubble_drag_enabled: bool = false
 var speech_bubble_dragging: bool = false
 var speech_bubble_drag_moved: bool = false
@@ -186,6 +200,7 @@ var desktop_minimized: bool = false
 var character_window_id: int = -1
 var speech_bubble_window_id: int = -1
 var speech_bubble_top_close_window_id: int = -1
+var speech_bubble_windows_primed: bool = false
 
 var body_variants: Dictionary = {}
 var current_body_state: String = "default"
@@ -211,6 +226,7 @@ func _ready() -> void:
 	_apply_visual_scale()
 	_center_visual_root_in_window()
 	_create_speech_bubble_window()
+	_create_focus_timer_window()
 
 	if speech_bubble != null:
 		speech_bubble.hide()
@@ -315,6 +331,7 @@ func restore_desktop_window_order() -> void:
 	_raise_desktop_window(get_window(), character_window_id)
 	_raise_desktop_window(speech_bubble_window, speech_bubble_window_id)
 	_raise_desktop_window(speech_bubble_top_close_window, speech_bubble_top_close_window_id)
+	_raise_desktop_window(focus_timer_window, focus_timer_window_id)
 
 func _raise_desktop_window(window: Window, cached_window_id: int = -1) -> void:
 	if window == null or not is_instance_valid(window) or not window.visible:
@@ -342,6 +359,9 @@ func _raise_desktop_window(window: Window, cached_window_id: int = -1) -> void:
 	)
 
 func _exit_tree() -> void:
+	if focus_timer_window != null and is_instance_valid(focus_timer_window):
+		focus_timer_window.queue_free()
+
 	if (
 		speech_bubble_top_close_window != null
 		and is_instance_valid(speech_bubble_top_close_window)
@@ -353,6 +373,165 @@ func _exit_tree() -> void:
 		and is_instance_valid(speech_bubble_window)
 	):
 		speech_bubble_window.queue_free()
+
+func _create_focus_timer_window() -> void:
+	if focus_timer_window != null and is_instance_valid(focus_timer_window):
+		return
+	var character_window: Window = get_window()
+	if character_window == null or character_window.get_parent() == null:
+		return
+
+	focus_timer_window = Window.new()
+	focus_timer_window.name = "FocusTimerWindow_" + character_id
+	focus_timer_window.size = Vector2i(104, 36)
+	focus_timer_window.borderless = true
+	focus_timer_window.transparent = true
+	focus_timer_window.transparent_bg = true
+	focus_timer_window.unresizable = true
+	focus_timer_window.unfocusable = true
+	focus_timer_window.always_on_top = true
+	focus_timer_window.transient = false
+	focus_timer_window.mouse_passthrough = true
+	focus_timer_window.visible = false
+	focus_timer_window.close_requested.connect(request_application_close)
+	character_window.get_parent().add_child(focus_timer_window)
+	focus_timer_window_id = focus_timer_window.get_window_id()
+
+	focus_timer_panel = PanelContainer.new()
+	focus_timer_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	focus_timer_window.add_child(focus_timer_panel)
+
+	focus_status_box = HBoxContainer.new()
+	focus_status_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	focus_status_box.add_theme_constant_override("separation", 6)
+	focus_timer_panel.add_child(focus_status_box)
+
+	response_loading_label = Label.new()
+	response_loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	response_loading_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	response_loading_label.add_theme_font_size_override("font_size", 18)
+	response_loading_label.text = "◜"
+	response_loading_label.visible = false
+	focus_status_box.add_child(response_loading_label)
+
+	focus_timer_label = Label.new()
+	focus_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	focus_timer_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	focus_timer_label.add_theme_font_size_override("font_size", 16)
+	focus_status_box.add_child(focus_timer_label)
+	_apply_focus_timer_appearance(true)
+	_update_focus_timer_window()
+
+func set_focus_timer_state(
+	seconds_remaining: int,
+	active: bool,
+	paused: bool
+) -> void:
+	focus_timer_seconds_remaining = maxi(0, seconds_remaining)
+	focus_timer_active = active
+	focus_timer_paused = paused
+	_update_focus_timer_window()
+
+func set_response_loading(source: String, loading: bool) -> void:
+	source = source.strip_edges().to_lower()
+	if source.is_empty():
+		return
+	if loading:
+		response_loading_sources[source] = true
+	else:
+		response_loading_sources.erase(source)
+	if response_loading_sources.is_empty():
+		response_loading_elapsed = 0.0
+		response_loading_frame = 0
+	_update_focus_timer_window()
+
+func _update_focus_timer_window() -> void:
+	if focus_timer_window == null or not is_instance_valid(focus_timer_window):
+		return
+	var minutes: int = focus_timer_seconds_remaining / 60
+	var seconds: int = focus_timer_seconds_remaining % 60
+	if focus_timer_label != null:
+		focus_timer_label.text = "%02d:%02d" % [minutes, seconds]
+		focus_timer_label.visible = focus_timer_active
+	var response_loading: bool = not response_loading_sources.is_empty()
+	if response_loading_label != null:
+		response_loading_label.visible = response_loading
+	_update_focus_status_window_size(response_loading)
+	_apply_focus_timer_appearance(false)
+	if focus_timer_panel != null:
+		var timer_color: Color = focus_timer_panel.modulate
+		timer_color.a = get_speech_bubble_alpha()
+		focus_timer_panel.modulate = timer_color
+	if (focus_timer_active or response_loading) and not desktop_minimized:
+		_sync_focus_timer_position()
+		if not focus_timer_window.visible:
+			focus_timer_window.show()
+	else:
+		focus_timer_window.hide()
+
+func _update_focus_status_window_size(response_loading: bool) -> void:
+	if focus_timer_window == null:
+		return
+	var width: int = 104
+	if response_loading and focus_timer_active:
+		width = 132
+	elif response_loading:
+		width = 40
+	focus_timer_window.size = Vector2i(width, 36)
+
+func _apply_focus_timer_appearance(force: bool) -> void:
+	if focus_timer_panel == null or focus_timer_label == null:
+		return
+	var signature: String = (
+		AppearanceSettingsScript.get_theme_signature()
+		+ ("|paused" if focus_timer_paused else "|active")
+	)
+	if not force and signature == last_focus_timer_appearance_signature:
+		return
+	var background_role: String = "secondary" if focus_timer_paused else "selection"
+	var style := StyleBoxFlat.new()
+	style.bg_color = AppearanceSettingsScript.get_ui_color(background_role)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_top = 5.0
+	style.content_margin_bottom = 5.0
+	focus_timer_panel.add_theme_stylebox_override("panel", style)
+	focus_timer_label.add_theme_color_override(
+		"font_color",
+		AppearanceSettingsScript.get_ui_color(
+			"muted" if focus_timer_paused else "text"
+		)
+	)
+	if response_loading_label != null:
+		response_loading_label.add_theme_color_override(
+			"font_color",
+			AppearanceSettingsScript.get_ui_color("text")
+		)
+	var ui_font: Font = AppearanceSettingsScript.get_ui_font()
+	if ui_font != null:
+		focus_timer_label.add_theme_font_override("font", ui_font)
+		if response_loading_label != null:
+			response_loading_label.add_theme_font_override("font", ui_font)
+	else:
+		focus_timer_label.remove_theme_font_override("font")
+		if response_loading_label != null:
+			response_loading_label.remove_theme_font_override("font")
+	last_focus_timer_appearance_signature = signature
+
+func _sync_focus_timer_position() -> void:
+	if focus_timer_window == null or pet_interaction == null:
+		return
+	var pet_rect: Rect2 = pet_interaction.get_desktop_pet_rect()
+	if pet_rect.size == Vector2.ZERO:
+		return
+	var screen: Rect2i = DisplayServer.screen_get_usable_rect()
+	var target_x: int = roundi(pet_rect.get_center().x - float(focus_timer_window.size.x) / 2.0)
+	var target_y: int = roundi(pet_rect.position.y - float(focus_timer_window.size.y) - 8.0)
+	focus_timer_window.position = Vector2i(
+		clampi(target_x, screen.position.x, screen.end.x - focus_timer_window.size.x),
+		clampi(target_y, screen.position.y, screen.end.y - focus_timer_window.size.y)
+	)
 
 func _create_speech_bubble_window() -> void:
 	if speech_bubble == null:
@@ -394,6 +573,34 @@ func _create_speech_bubble_window() -> void:
 	speech_bubble.scale = Vector2.ONE
 
 	_create_speech_bubble_top_close_window(window_container)
+	_prime_speech_bubble_windows()
+
+func _prime_speech_bubble_windows() -> void:
+	speech_bubble_windows_primed = false
+	for window: Window in [speech_bubble_window, speech_bubble_top_close_window]:
+		if window == null or not is_instance_valid(window):
+			continue
+		window.position = OFFSCREEN_WINDOW_POSITION
+		window.show()
+	if speech_bubble_top_close_window != null:
+		speech_bubble_top_close_window.mouse_passthrough = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	speech_bubble_windows_primed = true
+	if speech_bubble == null or not speech_bubble.visible:
+		_move_speech_bubble_windows_offscreen()
+	else:
+		_update_speech_bubble_position()
+
+func _move_speech_bubble_windows_offscreen() -> void:
+	if speech_bubble_window != null and is_instance_valid(speech_bubble_window):
+		speech_bubble_window.position = OFFSCREEN_WINDOW_POSITION
+	if (
+		speech_bubble_top_close_window != null
+		and is_instance_valid(speech_bubble_top_close_window)
+	):
+		speech_bubble_top_close_window.mouse_passthrough = true
+		speech_bubble_top_close_window.position = OFFSCREEN_WINDOW_POSITION
 
 func _create_speech_bubble_top_close_window(
 	window_container: Node
@@ -494,8 +701,8 @@ func get_character_window_size() -> Vector2i:
 	)
 func configure_display(
 	base_opacity: float,
-	hover_opacity_multiplier: float,
 	character_scale: float,
+	bubble_scale: float = 1.0,
 	bubble_opacity: float = 1.0
 ) -> void:
 	desktop_base_opacity = clampf(
@@ -503,16 +710,12 @@ func configure_display(
 		0.10,
 		1.0
 	)
-	desktop_hover_opacity_multiplier = clampf(
-		hover_opacity_multiplier,
-		1.0,
-		2.0
-	)
 	desktop_character_scale = clampf(
 		character_scale,
 		0.50,
 		1.50
 	)
+	desktop_speech_bubble_scale = clampf(bubble_scale, 0.50, 1.50)
 	speech_bubble_opacity = clampf(
 		bubble_opacity,
 		0.25,
@@ -548,6 +751,8 @@ func set_desktop_minimized(minimized: bool) -> void:
 			speech_bubble_window.hide()
 		if speech_bubble_top_close_window != null and is_instance_valid(speech_bubble_top_close_window) and not _set_native_window_visible(speech_bubble_top_close_window, false, speech_bubble_top_close_window_id):
 			speech_bubble_top_close_window.hide()
+		if focus_timer_window != null and is_instance_valid(focus_timer_window):
+			focus_timer_window.hide()
 		return
 	if character_window != null:
 		if not _set_native_window_visible(character_window, true, character_window_id):
@@ -557,6 +762,7 @@ func set_desktop_minimized(minimized: bool) -> void:
 		_set_native_window_visible(speech_bubble_window, true, speech_bubble_window_id)
 		if speech_bubble_top_close_window != null and speech_bubble_top_close_window.visible:
 			_set_native_window_visible(speech_bubble_top_close_window, true, speech_bubble_top_close_window_id)
+	_update_focus_timer_window()
 	restore_desktop_window_order()
 
 func _set_native_window_visible(window: Window, should_be_visible: bool, cached_window_id: int = -1) -> bool:
@@ -623,10 +829,7 @@ func _apply_display_settings() -> void:
 			pet_interaction.sync_locked_y_to_window_position()
 
 	if pet_interaction != null:
-		pet_interaction.configure_visual_behavior(
-			desktop_base_opacity,
-			desktop_hover_opacity_multiplier
-		)
+		pet_interaction.configure_visual_behavior(desktop_base_opacity)
 
 	set_character_alpha(desktop_base_opacity)
 	call_deferred("_update_speech_bubble_position")
@@ -671,7 +874,7 @@ func get_speech_bubble_size() -> Vector2:
 		minimum_size.y
 	)
 
-	return result
+	return result * desktop_speech_bubble_scale
 
 func create_play_controller() -> void:
 	if play_controller != null:
@@ -767,17 +970,19 @@ func _on_pet_stroked(
 func _on_pet_alt_clicked(
 	_interaction_character_id: String
 ) -> void:
+	if speech_bubble != null and speech_bubble.visible:
+		return
 	if play_controller == null:
-		return
-	if bool(play_controller.is_flustered()):
-		return
-	if not bool(play_controller.is_poke_mode()):
 		return
 
 	var local_position: Vector2 = Vector2.ZERO
 	if pet_interaction != null:
 		local_position = pet_interaction.get_alt_local_mouse_position()
-	play_controller.handle_poke(local_position, _get_local_pet_rect().size)
+	var pet_size: Vector2 = _get_local_pet_rect().size
+	if bool(play_controller.is_poke_mode()):
+		play_controller.handle_poke(local_position, pet_size)
+	else:
+		play_controller.handle_click_dialogue(local_position, pet_size, true)
 
 func _on_pet_alt_right_clicked(
 	_interaction_character_id: String
@@ -948,6 +1153,10 @@ func _set_speech_bubble_alpha(alpha: float) -> void:
 	var bubble_color: Color = speech_bubble.modulate
 	bubble_color.a = get_speech_bubble_alpha()
 	speech_bubble.modulate = bubble_color
+	if focus_timer_panel != null:
+		var timer_color: Color = focus_timer_panel.modulate
+		timer_color.a = get_speech_bubble_alpha()
+		focus_timer_panel.modulate = timer_color
 
 func _apply_character_art_alpha_recursive(
 	node: Node,
@@ -1655,7 +1864,6 @@ func show_speech(
 
 	if not speech_bubble.visible:
 		_reset_speech_bubble_height_lock()
-		speech_bubble_window.hide()
 
 	speech_bubble.show()
 	_set_speech_bubble_alpha(current_character_alpha)
@@ -1703,13 +1911,14 @@ func hide_speech() -> void:
 		and is_instance_valid(speech_bubble_window)
 	):
 		speech_bubble_window.mouse_passthrough = true
-		speech_bubble_window.hide()
 
 	if (
 		speech_bubble_top_close_window != null
 		and is_instance_valid(speech_bubble_top_close_window)
 	):
-		speech_bubble_top_close_window.hide()
+		speech_bubble_top_close_window.mouse_passthrough = true
+
+	_move_speech_bubble_windows_offscreen()
 
 	_reset_speech_bubble_height_lock()
 
@@ -1806,6 +2015,8 @@ func _refresh_speech_bubble_layout() -> void:
 func _update_speech_bubble_position() -> void:
 	if speech_bubble == null:
 		return
+	if not speech_bubble_windows_primed:
+		return
 
 	if not speech_bubble.visible:
 		return
@@ -1870,6 +2081,7 @@ func _update_speech_bubble_position() -> void:
 		maxi(1, ceili(target_rect.size.x)),
 		maxi(1, ceili(target_rect.size.y))
 	)
+	var unscaled_size := Vector2(native_size) / desktop_speech_bubble_scale
 
 	speech_bubble_window.size = native_size
 	speech_bubble_window.position = Vector2i(
@@ -1877,14 +2089,15 @@ func _update_speech_bubble_position() -> void:
 		roundi(target_rect.position.y)
 	)
 	speech_bubble.position = Vector2.ZERO
-	speech_bubble.size = Vector2(native_size)
+	speech_bubble.scale = Vector2.ONE * desktop_speech_bubble_scale
+	speech_bubble.size = unscaled_size
 
 	if (
 		segmented_bubble_background != null
 		and is_instance_valid(segmented_bubble_background)
 	):
 		segmented_bubble_background.position = Vector2.ZERO
-		segmented_bubble_background.size = Vector2(native_size)
+		segmented_bubble_background.size = unscaled_size
 
 	if not desktop_minimized and not speech_bubble_window.visible:
 		speech_bubble_window.show()
@@ -1910,23 +2123,25 @@ func _update_speech_bubble_top_close_window(
 		segmented_bubble_background == null
 		or not is_instance_valid(segmented_bubble_background)
 	):
-		speech_bubble_top_close_window.hide()
+		speech_bubble_top_close_window.mouse_passthrough = true
+		speech_bubble_top_close_window.position = OFFSCREEN_WINDOW_POSITION
 		return
 
 	var top_height: int = clampi(
 		ceili(
 			float(
 				segmented_bubble_background.get_top_height(
-					float(bubble_size.x)
+					float(bubble_size.x) / desktop_speech_bubble_scale
 				)
-			)
+			) * desktop_speech_bubble_scale
 		),
 		0,
 		bubble_size.y
 	)
 
 	if top_height <= 0:
-		speech_bubble_top_close_window.hide()
+		speech_bubble_top_close_window.mouse_passthrough = true
+		speech_bubble_top_close_window.position = OFFSCREEN_WINDOW_POSITION
 		return
 
 	speech_bubble_top_close_window.size = Vector2i(
@@ -1934,6 +2149,7 @@ func _update_speech_bubble_top_close_window(
 		top_height
 	)
 	speech_bubble_top_close_window.position = bubble_position
+	speech_bubble_top_close_window.mouse_passthrough = false
 	speech_bubble_top_close_surface.position = Vector2.ZERO
 	speech_bubble_top_close_surface.size = Vector2(
 		float(bubble_size.x),
@@ -2513,11 +2729,19 @@ func _process(
 	delta: float
 ) -> void:
 	_update_speech_bubble_drag()
+	if not response_loading_sources.is_empty():
+		response_loading_elapsed += maxf(0.0, delta)
+		if response_loading_elapsed >= 0.12:
+			response_loading_elapsed = fmod(response_loading_elapsed, 0.12)
+			response_loading_frame = (response_loading_frame + 1) % 4
+			if response_loading_label != null:
+				response_loading_label.text = ["◜", "◝", "◞", "◟"][response_loading_frame]
 	appearance_refresh_accumulator += maxf(0.0, delta)
 
 	if appearance_refresh_accumulator >= 0.5:
 		appearance_refresh_accumulator = 0.0
 		_apply_bubble_appearance(false)
+		_apply_focus_timer_appearance(false)
 
 	if (
 		speech_bubble != null
@@ -2525,3 +2749,5 @@ func _process(
 		and not desktop_minimized
 	):
 		_update_speech_bubble_position()
+	if (focus_timer_active or not response_loading_sources.is_empty()) and not desktop_minimized:
+		_sync_focus_timer_position()

@@ -70,6 +70,7 @@ func _build_ui() -> void:
 	model_row.add_child(model_label)
 	model_selector = OptionButton.new()
 	model_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	model_selector.custom_minimum_size.y = AppearanceSettingsScript.UI_CONTROL_HEIGHT
 	for preset: Dictionary in AISettings.MODEL_PRESETS:
 		model_selector.add_item(str(preset.get("label", "")))
 		model_selector.set_item_metadata(model_selector.item_count - 1, str(preset.get("route", "")))
@@ -86,6 +87,7 @@ func _build_ui() -> void:
 	custom_model_row.add_child(custom_label)
 	custom_model_input = LineEdit.new()
 	custom_model_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	custom_model_input.custom_minimum_size.y = AppearanceSettingsScript.UI_CONTROL_HEIGHT
 	custom_model_input.placeholder_text = "openrouter/free"
 	custom_model_row.add_child(custom_model_input)
 
@@ -97,6 +99,7 @@ func _build_ui() -> void:
 	key_row.add_child(key_label)
 	api_key_input = LineEdit.new()
 	api_key_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	api_key_input.custom_minimum_size.y = AppearanceSettingsScript.UI_CONTROL_HEIGHT
 	api_key_input.secret = true
 	key_row.add_child(api_key_input)
 
@@ -113,9 +116,12 @@ func _build_ui() -> void:
 	buttons.add_theme_constant_override("separation", 8)
 	box.add_child(buttons)
 	cancel_button = Button.new()
+	cancel_button.custom_minimum_size.y = AppearanceSettingsScript.UI_CONTROL_HEIGHT
 	cancel_button.pressed.connect(_cancel)
 	buttons.add_child(cancel_button)
 	save_button = Button.new()
+	save_button.custom_minimum_size.y = AppearanceSettingsScript.UI_CONTROL_HEIGHT
+	_style_primary_button(save_button)
 	save_button.pressed.connect(_save)
 	buttons.add_child(save_button)
 
@@ -149,6 +155,35 @@ func open_centered() -> void:
 	load_fields()
 	apply_language()
 	popup_centered()
+	call_deferred("_focus_api_key_input")
+
+func _focus_api_key_input() -> void:
+	if api_key_input == null:
+		return
+	api_key_input.grab_focus()
+	api_key_input.deselect()
+	api_key_input.caret_column = api_key_input.text.length()
+
+func _style_primary_button(button: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = AppearanceSettingsScript.get_ui_color("selection")
+	normal.corner_radius_top_left = 8
+	normal.corner_radius_top_right = 8
+	normal.corner_radius_bottom_left = 8
+	normal.corner_radius_bottom_right = 8
+	normal.content_margin_left = 14.0
+	normal.content_margin_right = 14.0
+	normal.content_margin_top = 7.0
+	normal.content_margin_bottom = 7.0
+
+	var hover: StyleBoxFlat = normal.duplicate()
+	hover.bg_color = AppearanceSettingsScript.get_ui_color("accent")
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", hover)
+	button.add_theme_stylebox_override("hover_pressed", hover)
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 func load_fields() -> void:
 	if model_selector == null or api_key_input == null or custom_model_input == null:

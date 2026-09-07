@@ -127,8 +127,9 @@ const DEFAULT_INTERACTION_WIDTH: float = 200.0
 const DEFAULT_CHARACTER_SCALE: float = 0.75
 
 const STARTUP_WINDOW_SETTLE_FRAMES: int = 2
+const OFFSCREEN_WINDOW_POSITION: Vector2i = Vector2i(-32000, -32000)
 
-const STARTUP_BOOT_PREPARE_TIMEOUT_SECONDS: float = 16.0
+const STARTUP_BOOT_PREPARE_TIMEOUT_SECONDS: float = 47.0
 
 var spawned_actors: Dictionary = {}
 
@@ -148,6 +149,10 @@ var preview_visible_character_limit: int = MAX_DESKTOP_CHARACTERS
 var manual_preview_mode: bool = false
 var external_occupied_rects: Array[Rect2] = []
 var desktop_minimized: bool = false
+var focus_timer_seconds_remaining: int = 0
+var focus_timer_active: bool = false
+var focus_timer_paused: bool = false
+var response_loading_sources: Dictionary = {}
 
 func _ready() -> void:
 	_connect_host_window_focus_recovery()
@@ -211,6 +216,66 @@ func _restore_character_window_order() -> void:
 			continue
 
 		actor.restore_desktop_window_order()
+
+func set_focus_timer_state(
+	seconds_remaining: int,
+	active: bool,
+	paused: bool
+) -> void:
+	focus_timer_seconds_remaining = maxi(0, seconds_remaining)
+	focus_timer_active = active
+	focus_timer_paused = paused
+	_apply_focus_timer_state_to_actors()
+
+func set_character_response_loading(
+	character_id: String,
+	source: String,
+	loading: bool
+) -> void:
+	character_id = character_id.strip_edges().to_lower()
+	source = source.strip_edges().to_lower()
+	if character_id.is_empty() or source.is_empty():
+		return
+	var character_sources: Dictionary = response_loading_sources.get(character_id, {})
+	if loading:
+		character_sources[source] = true
+		response_loading_sources[character_id] = character_sources
+	else:
+		character_sources.erase(source)
+		if character_sources.is_empty():
+			response_loading_sources.erase(character_id)
+		else:
+			response_loading_sources[character_id] = character_sources
+	var actor: DesktopCharacterActor = get_actor(character_id)
+	if actor != null:
+		actor.set_response_loading(source, loading)
+
+func _apply_focus_timer_state_to_actors() -> void:
+	var primary_actor: DesktopCharacterActor = null
+	for actor_value: Variant in spawned_actors.values():
+		if not (actor_value is DesktopCharacterActor):
+			continue
+		var actor: DesktopCharacterActor = actor_value as DesktopCharacterActor
+		if not is_instance_valid(actor):
+			continue
+		if (
+			primary_actor == null
+			or actor.get_desktop_slot_index()
+				< primary_actor.get_desktop_slot_index()
+		):
+			primary_actor = actor
+
+	for actor_value: Variant in spawned_actors.values():
+		if not (actor_value is DesktopCharacterActor):
+			continue
+		var actor: DesktopCharacterActor = actor_value as DesktopCharacterActor
+		if not is_instance_valid(actor):
+			continue
+		actor.set_focus_timer_state(
+			focus_timer_seconds_remaining,
+			focus_timer_active and actor == primary_actor,
+			focus_timer_paused
+		)
 
 func _process(
 	delta: float
@@ -371,26 +436,7 @@ func enable_host_window_clickthrough() -> void:
 		PackedVector2Array()
 	)
 
-	if OS.get_name() != "Windows":
-		host_window.mouse_passthrough = true
-		return
-
-	if not Engine.has_singleton(
-		"MousePassthrough"
-	):
-		return
-
-	var passthrough: Object = (
-		Engine.get_singleton(
-			"MousePassthrough"
-		)
-	)
-
-	passthrough.call(
-		"set_passthrough",
-		host_window.get_window_id(),
-		true
-	)
+	host_window.mouse_passthrough = true
 
 func _wait_for_startup_window_settle() -> void:
 	for _frame_index: int in range(
@@ -1562,8 +1608,8 @@ func spawn_character(
 	var global_settings: Dictionary = get_global_desktop_settings()
 	actor.configure_display(
 		float(global_settings.get("base_opacity", 0.82)),
-		float(global_settings.get("hover_opacity_multiplier", 1.20)),
 		float(global_settings.get("character_scale", DEFAULT_CHARACTER_SCALE)),
+		float(global_settings.get("bubble_scale", 1.0)),
 		float(global_settings.get("bubble_opacity", 1.0))
 	)
 	actor.configure_behavior(
@@ -1587,7 +1633,7 @@ func spawn_character(
 		bool(global_settings.get("bubble_drag_enabled", true)),
 		get_speech_bubble_offset(character_id, pack_id)
 	)
-	character_window.show()
+	_show_character_window_when_ready(character_window)
 	_register_character_drop_target(character_window)
 
 	actor.menu_tab_requested.connect(_on_actor_menu_tab_requested)
@@ -1604,6 +1650,10 @@ func spawn_character(
 
 	spawned_actors[character_id] = actor
 	spawned_windows[character_id] = character_window
+	_apply_focus_timer_state_to_actors()
+	var loading_sources: Dictionary = response_loading_sources.get(character_id, {})
+	for source_value: Variant in loading_sources.keys():
+		actor.set_response_loading(str(source_value), true)
 	call_deferred("_refresh_spawned_default_layout")
 	return actor
 
@@ -1621,8 +1671,8 @@ func _spawn_blank_preview_character(
 	var global_settings: Dictionary = get_global_desktop_settings()
 	actor.configure_display(
 		float(global_settings.get("base_opacity", 0.82)),
-		float(global_settings.get("hover_opacity_multiplier", 1.20)),
 		float(global_settings.get("character_scale", DEFAULT_CHARACTER_SCALE)),
+		float(global_settings.get("bubble_scale", 1.0)),
 		float(global_settings.get("bubble_opacity", 1.0))
 	)
 	actor.configure_behavior(false, false)
@@ -1636,7 +1686,7 @@ func _spawn_blank_preview_character(
 	character_window.add_child(actor)
 	if actor.pet_interaction != null:
 		actor.pet_interaction.move_to_default_position()
-	character_window.show()
+	_show_character_window_when_ready(character_window)
 	_register_character_drop_target(character_window)
 	spawned_actors[character_id] = actor
 	spawned_windows[character_id] = character_window
@@ -1644,6 +1694,8 @@ func _spawn_blank_preview_character(
 
 func _refresh_spawned_default_layout() -> void:
 	await get_tree().process_frame
+	while _character_window_is_priming():
+		await get_tree().process_frame
 
 	for actor_value: Variant in spawned_actors.values():
 		if not (actor_value is DesktopCharacterActor):
@@ -1656,6 +1708,13 @@ func _refresh_spawned_default_layout() -> void:
 
 	await get_tree().process_frame
 	_place_spawned_cast_in_leftmost_available_space()
+
+func _character_window_is_priming() -> bool:
+	for window_value: Variant in spawned_windows.values():
+		if window_value is Window and (window_value as Window).has_meta(&"priming"):
+			if bool((window_value as Window).get_meta(&"priming")):
+				return true
+	return false
 
 func _place_spawned_cast_in_leftmost_available_space() -> void:
 	if external_occupied_rects.is_empty():
@@ -1757,6 +1816,18 @@ func create_character_window(
 	)
 
 	return character_window
+
+func _show_character_window_when_ready(character_window: Window) -> void:
+	var target_position := character_window.position
+	character_window.set_meta(&"priming", true)
+	character_window.position = OFFSCREEN_WINDOW_POSITION
+	character_window.show()
+	for _frame: int in range(STARTUP_WINDOW_SETTLE_FRAMES):
+		await get_tree().process_frame
+	if not is_instance_valid(character_window):
+		return
+	character_window.position = target_position
+	character_window.set_meta(&"priming", false)
 
 func _on_character_window_close_requested() -> void:
 	application_close_requested.emit()
@@ -2280,9 +2351,9 @@ func _clear_character_interaction_lock(
 func get_global_desktop_settings() -> Dictionary:
 	var defaults: Dictionary = {
 		"base_opacity": 0.82,
-		"hover_opacity_multiplier": 1.20,
 		"bubble_opacity": 1.0,
 		"character_scale": DEFAULT_CHARACTER_SCALE,
+		"bubble_scale": 1.0,
 		"vertical_movement_enabled": false,
 		"bubble_drag_enabled": true,
 		"ambient_cadence_mode": "free",
@@ -2356,17 +2427,6 @@ func apply_global_desktop_settings(
 		1.0
 	)
 
-	current["hover_opacity_multiplier"] = clampf(
-		float(
-			current.get(
-				"hover_opacity_multiplier",
-				1.20
-			)
-		),
-		1.0,
-		2.0
-	)
-
 	current["bubble_opacity"] = clampf(
 		float(
 			current.get(
@@ -2385,6 +2445,11 @@ func apply_global_desktop_settings(
 				DEFAULT_CHARACTER_SCALE
 			)
 		),
+		0.50,
+		1.50
+	)
+	current["bubble_scale"] = clampf(
+		float(current.get("bubble_scale", 1.0)),
 		0.50,
 		1.50
 	)
@@ -2446,8 +2511,8 @@ func apply_global_desktop_settings(
 		var actor: DesktopCharacterActor = actor_value as DesktopCharacterActor
 		actor.configure_display(
 			float(current.get("base_opacity", 0.82)),
-			float(current.get("hover_opacity_multiplier", 1.20)),
 			float(current.get("character_scale", DEFAULT_CHARACTER_SCALE)),
+			float(current.get("bubble_scale", 1.0)),
 			float(current.get("bubble_opacity", 1.0))
 		)
 		actor.configure_desktop_interaction(

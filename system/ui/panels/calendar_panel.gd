@@ -16,6 +16,10 @@ const AppearanceSettingsScript = preload(
 )
 
 const STAR_TEXTURE: Texture2D = preload("res://assets/ui/star.png")
+const FOCUS_HISTORY_DIRECTORY: String = "user://calendar"
+const FOCUS_HISTORY_PATH: String = "user://calendar/focus_days.json"
+const LEGACY_WEEKLY_PATH: String = "user://productivity/current_week.json"
+const PRODUCTIVE_FOCUS_MINUTES: int = 30
 
 const CALENDAR_DAY_FONT_SIZE: int = 17
 
@@ -122,6 +126,8 @@ func _ready() -> void:
 	)
 
 	reload_schedules()
+	_load_focus_history()
+	_discard_legacy_weekly_records()
 	create_interface()
 	refresh_all()
 	apply_language()
@@ -743,13 +749,50 @@ func _style_weekday_toggle(button: Button) -> void:
 	button.add_theme_stylebox_override("hover_pressed", pressed)
 	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
-func set_productive_dates(date_keys: Array) -> void:
-	productive_dates.clear()
-	for value: Variant in date_keys:
-		var key: String = str(value).strip_edges()
-		if not key.is_empty():
-			productive_dates[key] = true
+func record_focus_session(planned_minutes: int) -> void:
+	var now: Dictionary = Time.get_datetime_dict_from_system()
+	var date_key: String = "%04d-%02d-%02d" % [
+		int(now.get("year", 1970)),
+		int(now.get("month", 1)),
+		int(now.get("day", 1))
+	]
+	productive_dates[date_key] = (
+		int(productive_dates.get(date_key, 0))
+		+ maxi(1, planned_minutes)
+	)
+	_save_focus_history()
 	refresh_calendar()
+
+func _load_focus_history() -> void:
+	productive_dates.clear()
+	if not FileAccess.file_exists(FOCUS_HISTORY_PATH):
+		return
+	var file: FileAccess = FileAccess.open(FOCUS_HISTORY_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if not (parsed is Dictionary):
+		return
+	for key_value: Variant in (parsed as Dictionary).keys():
+		var key: String = str(key_value).strip_edges()
+		var minutes: int = int((parsed as Dictionary).get(key_value, 0))
+		if not key.is_empty() and minutes > 0:
+			productive_dates[key] = minutes
+
+func _save_focus_history() -> void:
+	DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(FOCUS_HISTORY_DIRECTORY)
+	)
+	var file: FileAccess = FileAccess.open(FOCUS_HISTORY_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(productive_dates, "\t"))
+	file.close()
+
+func _discard_legacy_weekly_records() -> void:
+	if FileAccess.file_exists(LEGACY_WEEKLY_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(LEGACY_WEEKLY_PATH))
 
 func refresh_all() -> void:
 	refresh_calendar()
@@ -915,7 +958,7 @@ func refresh_calendar() -> void:
 		button.text = ""
 		var is_selected: bool = day == selected_day
 		sticker.visible = (
-			productive_dates.has(date_key)
+			int(productive_dates.get(date_key, 0)) >= PRODUCTIVE_FOCUS_MINUTES
 			and not is_selected
 		)
 		_apply_day_button_appearance(
