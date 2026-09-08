@@ -33,7 +33,7 @@ const DEFAULT_HOLIDAY_SCHEDULES: Array[Dictionary] = [
 static func load_schedules() -> Array[Dictionary]:
 	_ensure_save_directory()
 
-	if FileAccess.file_exists(SAVE_PATH):
+	if FileAccess.file_exists(SAVE_PATH) or FileAccess.file_exists(SAVE_PATH + ".bak"):
 		var loaded: Array[Dictionary] = _load_txt_schedules()
 		if not FileAccess.file_exists(DEFAULT_SEED_MARKER):
 			loaded = _merge_default_schedules(loaded)
@@ -205,18 +205,12 @@ static func make_schedule_id() -> String:
 static func _load_txt_schedules() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 
-	var file: FileAccess = FileAccess.open(
-		SAVE_PATH,
-		FileAccess.READ
-	)
-
-	if file == null:
-		return result
+	var saved_text := AtomicFile.load_text(SAVE_PATH)
 
 	var current: Dictionary = {}
 
 	for raw_line: String in (
-		file.get_as_text().split(
+		saved_text.split(
 			"\n"
 		)
 	):
@@ -377,14 +371,6 @@ static func _write_txt_schedules(
 
 	_ensure_save_directory()
 
-	var file: FileAccess = FileAccess.open(
-		SAVE_PATH,
-		FileAccess.WRITE
-	)
-
-	if file == null:
-		return false
-
 	var lines: Array[String] = [
 		"# Companion schedules",
 		"#",
@@ -483,13 +469,7 @@ static func _write_txt_schedules(
 
 		lines.append("")
 
-	file.store_string(
-		"\n".join(
-			lines
-		)
-	)
-
-	return true
+	return AtomicFile.save_text(SAVE_PATH, "\n".join(lines)) == OK
 
 static func _parse_days(
 	value: String

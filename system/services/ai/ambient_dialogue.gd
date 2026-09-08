@@ -18,9 +18,9 @@ const MAX_POOL_EVENTS: int = 75
 
 const SOLO_LINES_PER_CHARACTER: int = 8
 
-const CONVERSATION_COUNT: int = 12
+const SOLO_LOW_WATER_PER_CHARACTER: int = 4
 
-const LONG_CONVERSATION_COUNT: int = 2
+const CONVERSATION_LOW_WATER: int = 3
 
 const CONVERSATION_CHUNK_SIZE: int = 4
 
@@ -42,7 +42,7 @@ const DEFAULT_GENERATION_INTERVAL_MINUTES: float = 10.0
 
 const DEFAULT_GENERATION_JITTER_RATIO: float = 0.20
 
-const MAX_PROMPT_MEMORIES: int = 12
+const MAX_PROMPT_MEMORIES: int = 6
 
 const MAX_LINE_LENGTH: int = 240
 
@@ -77,6 +77,8 @@ var generation_cast_signature: String = ""
 var generation_queue: Array = []
 
 var pending_generation_job: Dictionary = {}
+
+var generation_rotation_index: int = 0
 
 var last_selected_event_key: String = ""
 
@@ -515,17 +517,18 @@ func request_generation_pass() -> void:
 		_schedule_next_generation()
 		return
 
+	var next_jobs: Array = _build_generation_queue(character_ids)
+	if next_jobs.is_empty():
+		_schedule_next_generation()
+		return
+
 	generation_in_progress = true
 
 	generation_cast_signature = (
 		get_cast_signature()
 	)
 
-	generation_queue = (
-		_build_generation_queue(
-			character_ids
-		)
-	)
+	generation_queue = next_jobs
 
 	_start_next_generation_job()
 
@@ -533,10 +536,12 @@ func _build_generation_queue(
 	active_character_ids: Array[String]
 ) -> Array:
 
-	var result: Array = []
+	var candidates: Array = []
 
 	for character_id: String in active_character_ids:
-		result.append(
+		if _count_solo_events(character_id) >= SOLO_LOW_WATER_PER_CHARACTER:
+			continue
+		candidates.append(
 			{
 				"kind": "solo",
 				"character_id": character_id,
@@ -544,38 +549,48 @@ func _build_generation_queue(
 			}
 		)
 
-	if active_character_ids.size() >= 2:
-		var normal_remaining: int = maxi(
-			0,
-			CONVERSATION_COUNT
-				- LONG_CONVERSATION_COUNT
+	if (
+		active_character_ids.size() >= 2
+		and _count_conversation_events(active_character_ids) < CONVERSATION_LOW_WATER
+	):
+		candidates.append(
+			{
+				"kind": "conversation",
+				"count": CONVERSATION_CHUNK_SIZE,
+				"long": false
+			}
 		)
 
-		while normal_remaining > 0:
-			var chunk_count: int = mini(
-				CONVERSATION_CHUNK_SIZE,
-				normal_remaining
-			)
+	if candidates.is_empty():
+		return []
 
-			result.append(
-				{
-					"kind": "conversation",
-					"count": chunk_count,
-					"long": false
-				}
-			)
+	var selected_index: int = generation_rotation_index % candidates.size()
+	generation_rotation_index += 1
+	return [(candidates[selected_index] as Dictionary).duplicate(true)]
 
-			normal_remaining -= chunk_count
+func _count_solo_events(character_id: String) -> int:
+	var result: int = 0
+	for value: Variant in dialogue_pool:
+		if not (value is Dictionary):
+			continue
+		var event: Dictionary = value as Dictionary
+		if (
+			str(event.get("type", "")) == "solo"
+			and str(event.get("character_id", "")) == character_id
+		):
+			result += 1
+	return result
 
-		if LONG_CONVERSATION_COUNT > 0:
-			result.append(
-				{
-					"kind": "conversation",
-					"count": LONG_CONVERSATION_COUNT,
-					"long": true
-				}
-			)
-
+func _count_conversation_events(active_character_ids: Array[String]) -> int:
+	var result: int = 0
+	for value: Variant in dialogue_pool:
+		if not (value is Dictionary):
+			continue
+		var event: Dictionary = value as Dictionary
+		if str(event.get("type", "")) != "conversation":
+			continue
+		if _event_is_eligible(event, active_character_ids):
+			result += 1
 	return result
 
 func _start_next_generation_job() -> void:
@@ -656,7 +671,7 @@ func _start_next_generation_job() -> void:
 	var messages: Array = [
 		{
 			"role": "system",
-			"content": prompt
+			"content": prompt + "\n" + DialogueOutput.rules(CharacterProfiles.get_pack_output_language(CharacterProfiles.get_current_pack()), true)
 		},
 		{
 			"role": "user",
@@ -786,10 +801,7 @@ func _build_solo_generation_prompt(
 		+ display_name
 		+ ").\n\n"
 		+ "CHARACTER PROFILE:\n"
-		+ JSON.stringify(
-			profile,
-			"\t"
-		)
+		+ JSON.stringify(CharacterProfiles.compact_prompt_profile(profile))
 		+ "\n\n"
 		+ "SHARED MEMORY:\n"
 		+ _get_shared_memory_prompt()
@@ -836,10 +848,7 @@ func _build_conversation_generation_prompt(
 			+ "\nDISPLAY NAME: "
 			+ display_name
 			+ "\nPROFILE:\n"
-			+ JSON.stringify(
-				profile,
-				"\t"
-			)
+			+ JSON.stringify(CharacterProfiles.compact_prompt_profile(profile))
 		)
 
 	if profile_sections.size() < 2:
@@ -1743,6 +1752,9 @@ func clean_line(
 			+ "..."
 		)
 
+	result = DialogueOutput.clean_text(result, true)
+	if not DialogueOutput.language_ok(DialogueOutput.clean_text(result), CharacterProfiles.get_pack_output_language(CharacterProfiles.get_current_pack())):
+		return ""
 	return result
 
 func get_random_event_for_characters(

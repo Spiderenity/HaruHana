@@ -40,13 +40,49 @@ signal session_time_updated(
 	paused: bool
 )
 
+signal session_milestone(
+	event_key: String,
+	task_name: String,
+	planned_minutes: int
+)
+
+signal pomodoro_phase_started(
+	phase: String,
+	task_name: String,
+	planned_minutes: int
+)
+
+signal pomodoro_phase_finished(
+	phase: String,
+	task_name: String,
+	planned_minutes: int
+)
+
+signal pomodoro_break_prompted(
+	task_name: String,
+	planned_minutes: int
+)
+
 const DEFAULT_MINUTES := 25.0
 const DEFAULT_TASK_NAME := "Focus session"
 const LOCKED_CONTROL_TINT := Color(0.62, 0.62, 0.62, 1.0)
+const DEFAULT_POMODORO_SHORT_BREAK_SECONDS: float = 5.0 * 60.0
+const DEFAULT_POMODORO_LONG_BREAK_SECONDS: float = 15.0 * 60.0
+const POMODORO_FOCUS_COUNT: int = 4
 
 var configured_seconds: float = (
 	DEFAULT_MINUTES * 60.0
 )
+var focus_configured_seconds: float = DEFAULT_MINUTES * 60.0
+var standard_configured_seconds: float = DEFAULT_MINUTES * 60.0
+var short_break_seconds: float = DEFAULT_POMODORO_SHORT_BREAK_SECONDS
+var long_break_seconds: float = DEFAULT_POMODORO_LONG_BREAK_SECONDS
+var automatic_breaks: bool = true
+var timer_mode: String = "standard"
+var current_phase: String = "focus"
+var completed_focus_count: int = 0
+var halfway_emitted: bool = false
+var ending_emitted: bool = false
 
 var active_task_name: String = ""
 
@@ -57,6 +93,11 @@ var duration_input: SpinBox
 
 var time_label: LineEdit
 var status_label: Label
+var mode_toggle_button: Button
+var pomodoro_settings_card: PanelContainer
+var short_break_minutes_input: SpinBox
+var long_break_minutes_input: SpinBox
+var automatic_breaks_check: CheckBox
 
 var start_pause_button: Button
 var reset_button: Button
@@ -128,13 +169,16 @@ func _refresh_language_state() -> void:
 	if countdown == null or start_pause_button == null or status_label == null:
 		return
 
+	_refresh_mode_labels()
 	if not countdown.is_stopped():
 		if countdown.paused:
 			start_pause_button.text = _l("Resume", "계속")
 			status_label.text = _l("Paused", "일시정지")
 		else:
 			start_pause_button.text = _l("Pause", "일시정지")
-			if active_task_name.is_empty():
+			if current_phase != "focus":
+				status_label.text = _phase_running_text()
+			elif active_task_name.is_empty():
 				status_label.text = _l("Focusing", "집중 중")
 			else:
 				status_label.text = (
@@ -145,7 +189,9 @@ func _refresh_language_state() -> void:
 
 	start_pause_button.text = _l("Start", "시작")
 
-	if not last_finished_task_name.is_empty():
+	if timer_mode == "pomodoro":
+		status_label.text = _phase_ready_text()
+	elif not last_finished_task_name.is_empty():
 		status_label.text = (
 			_l("Finished: ", "완료: ")
 			+ last_finished_task_name
@@ -168,32 +214,40 @@ func create_timer() -> void:
 	add_child(countdown)
 
 func create_interface() -> void:
+	var top_region := VBoxContainer.new()
+	top_region.custom_minimum_size.y = AppearanceSettingsScript.UI_CARD_TOP_REGION_HEIGHT
+	top_region.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_region.add_theme_constant_override(
+		"separation", AppearanceSettingsScript.UI_STACK_GAP
+	)
+	add_child(top_region)
+
 	var heading := Label.new()
 	_bind_localized_text(heading, "Focus Timer", "집중 타이머")
 	heading.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_LARGE)
-	add_child(heading)
+	top_region.add_child(heading)
 
 	var explanation := Label.new()
 	_bind_localized_text(
 		explanation,
-		"Name a task, pick a duration, and start.",
-		"작업 이름을 적고 시간을 고른 뒤 시작하세요."
+		"집중 타이머",
+		"Focus Timer"
 	)
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	explanation.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_SMALL)
 	explanation.remove_theme_color_override("font_color")
-	add_child(explanation)
+	top_region.add_child(explanation)
 
-	add_child(HSeparator.new())
+	top_region.add_child(HSeparator.new())
 
 	var body_shell := HBoxContainer.new()
 	body_shell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body_shell.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body_shell.alignment = BoxContainer.ALIGNMENT_CENTER
-	add_child(body_shell)
+	top_region.add_child(body_shell)
 
 	var body := VBoxContainer.new()
-	body.custom_minimum_size.x = 500.0
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", AppearanceSettingsScript.UI_STACK_GAP)
 	body_shell.add_child(body)
@@ -230,6 +284,14 @@ func create_interface() -> void:
 	create_preset_button(presets, 5)
 	create_preset_button(presets, 25)
 	create_preset_button(presets, 45)
+	mode_toggle_button = Button.new()
+	mode_toggle_button.focus_mode = Control.FOCUS_NONE
+	mode_toggle_button.add_theme_font_size_override(
+		"font_size", AppearanceSettingsScript.UI_FONT_MEDIUM
+	)
+	_style_timer_button(mode_toggle_button)
+	mode_toggle_button.pressed.connect(_on_mode_toggle_pressed)
+	presets.add_child(mode_toggle_button)
 
 	duration_input = SpinBox.new()
 	duration_input.min_value = 1
@@ -242,8 +304,8 @@ func create_interface() -> void:
 
 	var timer_center := CenterContainer.new()
 	timer_center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	timer_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	timer_center.custom_minimum_size.y = 300.0
+	timer_center.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	timer_center.custom_minimum_size.y = 222.0
 	body.add_child(timer_center)
 
 	var timer_core := VBoxContainer.new()
@@ -294,6 +356,65 @@ func create_interface() -> void:
 	start_pause_button.pressed.connect(_on_start_pause_pressed)
 	controls.add_child(start_pause_button)
 
+	automatic_breaks_check = CheckBox.new()
+	_bind_localized_text(
+		automatic_breaks_check, "Start breaks automatically", "휴식 자동 시작"
+	)
+	automatic_breaks_check.button_pressed = true
+	automatic_breaks_check.toggled.connect(_on_automatic_breaks_toggled)
+	top_region.add_child(automatic_breaks_check)
+	pomodoro_settings_card = PanelContainer.new()
+	pomodoro_settings_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add_child(pomodoro_settings_card)
+	var settings_margin := MarginContainer.new()
+	settings_margin.add_theme_constant_override("margin_left", 16)
+	settings_margin.add_theme_constant_override("margin_top", 8)
+	settings_margin.add_theme_constant_override("margin_right", 16)
+	settings_margin.add_theme_constant_override("margin_bottom", 8)
+	pomodoro_settings_card.add_child(settings_margin)
+	var settings_body := VBoxContainer.new()
+	settings_body.add_theme_constant_override(
+		"separation", AppearanceSettingsScript.UI_COMPACT_GAP
+	)
+	settings_margin.add_child(settings_body)
+	short_break_minutes_input = _create_pomodoro_time_row(
+		settings_body, "Short break", "짧은 휴식",
+		DEFAULT_POMODORO_SHORT_BREAK_SECONDS / 60.0
+	)
+	long_break_minutes_input = _create_pomodoro_time_row(
+		settings_body, "Long break", "긴 휴식",
+		DEFAULT_POMODORO_LONG_BREAK_SECONDS / 60.0
+	)
+	short_break_minutes_input.value_changed.connect(_on_short_break_changed)
+	long_break_minutes_input.value_changed.connect(_on_long_break_changed)
+	_refresh_mode_labels()
+
+func _create_pomodoro_time_row(
+	parent: VBoxContainer,
+	english_label: String,
+	korean_label: String,
+	minutes: float
+) -> SpinBox:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.custom_minimum_size.y = float(AppearanceSettingsScript.UI_CONTROL_HEIGHT)
+	parent.add_child(row)
+	var label := Label.new()
+	_bind_localized_text(label, english_label, korean_label)
+	label.custom_minimum_size.x = 120.0
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(label)
+	var input := SpinBox.new()
+	input.min_value = 1.0
+	input.max_value = 180.0
+	input.step = 1.0
+	input.value = minutes
+	_bind_localized_text(input, " min", "분", "suffix")
+	input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	input.custom_minimum_size.y = float(AppearanceSettingsScript.UI_CONTROL_HEIGHT)
+	row.add_child(input)
+	return input
+
 func _style_timer_button(button: Button) -> void:
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.0, 0.0, 0.0, 0.0)
@@ -342,6 +463,73 @@ func apply_appearance() -> void:
 	for button: Button in preset_buttons:
 		if is_instance_valid(button):
 			_style_timer_button(button)
+	if mode_toggle_button != null:
+		_style_timer_button(mode_toggle_button)
+		var mode_text_color := AppearanceSettingsScript.get_ui_color("text")
+		for color_name: String in [
+			"font_color", "font_hover_color", "font_pressed_color",
+			"font_hover_pressed_color", "font_focus_color"
+		]:
+			mode_toggle_button.add_theme_color_override(color_name, mode_text_color)
+	if pomodoro_settings_card != null:
+		var card_style := StyleBoxFlat.new()
+		card_style.bg_color = AppearanceSettingsScript.get_ui_color("surface_alt")
+		card_style.corner_radius_top_left = 10
+		card_style.corner_radius_top_right = 10
+		card_style.corner_radius_bottom_left = 10
+		card_style.corner_radius_bottom_right = 10
+		pomodoro_settings_card.add_theme_stylebox_override("panel", card_style)
+
+func _refresh_mode_labels() -> void:
+	if mode_toggle_button != null:
+		mode_toggle_button.text = (
+			_l("Regular timer", "일반 타이머")
+			if timer_mode == "pomodoro"
+			else _l("Pomodoro", "뽀모도로")
+		)
+	if pomodoro_settings_card != null:
+		pomodoro_settings_card.visible = timer_mode == "pomodoro"
+	if automatic_breaks_check != null:
+		automatic_breaks_check.visible = timer_mode == "pomodoro"
+	if short_break_minutes_input != null:
+		short_break_minutes_input.set_value_no_signal(short_break_seconds / 60.0)
+	if long_break_minutes_input != null:
+		long_break_minutes_input.set_value_no_signal(long_break_seconds / 60.0)
+
+func _on_mode_toggle_pressed() -> void:
+	if countdown != null and not countdown.is_stopped():
+		return
+	if timer_mode == "standard":
+		standard_configured_seconds = configured_seconds
+	timer_mode = "standard" if timer_mode == "pomodoro" else "pomodoro"
+	current_phase = "focus"
+	completed_focus_count = 0
+	configured_seconds = (
+		focus_configured_seconds
+		if timer_mode == "pomodoro"
+		else standard_configured_seconds
+	)
+	set_configuration_editable(true)
+	update_display(configured_seconds)
+	_refresh_language_state()
+
+func _phase_running_text() -> String:
+	return _l("Break", "휴식 중")
+
+func _phase_ready_text() -> String:
+	match current_phase:
+		"short_break":
+			return _l("Short break ready", "짧은 휴식 준비")
+		"long_break":
+			return _l("Long break ready", "긴 휴식 준비")
+		_:
+			var focus_number: int = mini(
+				completed_focus_count + 1, POMODORO_FOCUS_COUNT
+			)
+			return _l(
+				"Focus %d / %d" % [focus_number, POMODORO_FOCUS_COUNT],
+				"집중 %d / %d" % [focus_number, POMODORO_FOCUS_COUNT]
+			)
 
 func create_preset_button(
 	parent: HBoxContainer,
@@ -371,6 +559,10 @@ func _set_preset(
 
 	duration_input.set_value_no_signal(minutes)
 	configured_seconds = float(minutes) * 60.0
+	if timer_mode == "pomodoro" and current_phase == "focus":
+		focus_configured_seconds = configured_seconds
+	if timer_mode == "standard":
+		standard_configured_seconds = configured_seconds
 	update_display(configured_seconds)
 
 func get_entered_task_name() -> String:
@@ -390,19 +582,56 @@ func set_configuration_editable(
 
 	task_input.editable = editable
 	task_input.modulate = tint
+	task_input.mouse_filter = (
+		Control.MOUSE_FILTER_STOP if editable else Control.MOUSE_FILTER_IGNORE
+	)
+	task_input.focus_mode = Control.FOCUS_ALL if editable else Control.FOCUS_NONE
 	if not editable:
+		task_input.release_focus()
 		task_input.add_theme_stylebox_override(
 			"read_only",
 			task_input.get_theme_stylebox("normal").duplicate()
 		)
+		task_input.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	else:
+		task_input.remove_theme_stylebox_override("read_only")
+		task_input.remove_theme_stylebox_override("focus")
 	duration_input.editable = editable
 	if time_label != null:
 		time_label.editable = editable
 		time_label.modulate = tint
+		time_label.mouse_filter = (
+			Control.MOUSE_FILTER_STOP if editable else Control.MOUSE_FILTER_IGNORE
+		)
+		time_label.focus_mode = Control.FOCUS_ALL if editable else Control.FOCUS_NONE
+		if not editable:
+			time_label.release_focus()
 
 	for button: Button in preset_buttons:
 		button.disabled = not editable
 		button.modulate = tint
+	if mode_toggle_button != null:
+		mode_toggle_button.disabled = not editable
+		mode_toggle_button.modulate = tint
+	for input: SpinBox in [
+		short_break_minutes_input, long_break_minutes_input
+	]:
+		if input != null:
+			input.editable = editable
+			input.modulate = tint
+			input.mouse_filter = (
+				Control.MOUSE_FILTER_STOP if editable else Control.MOUSE_FILTER_IGNORE
+			)
+			var line_edit := input.get_line_edit()
+			line_edit.focus_mode = Control.FOCUS_ALL if editable else Control.FOCUS_NONE
+			if not editable:
+				line_edit.release_focus()
+				line_edit.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+			else:
+				line_edit.remove_theme_stylebox_override("focus")
+	if automatic_breaks_check != null:
+		automatic_breaks_check.disabled = not editable
+		automatic_breaks_check.modulate = tint
 
 func start_quick_session(
 	minutes: int,
@@ -415,6 +644,10 @@ func start_quick_session(
 	if not countdown.is_stopped():
 		return false
 
+	timer_mode = "standard"
+	current_phase = "focus"
+	completed_focus_count = 0
+
 	var clamped_minutes: int = clampi(
 		minutes,
 		int(duration_input.min_value),
@@ -423,7 +656,9 @@ func start_quick_session(
 
 	duration_input.set_value_no_signal(clamped_minutes)
 	configured_seconds = float(clamped_minutes) * 60.0
+	standard_configured_seconds = configured_seconds
 	update_display(configured_seconds)
+	_refresh_mode_labels()
 
 	var clean_task_name: String = (
 		task_name.strip_edges()
@@ -459,12 +694,14 @@ func _on_start_pause_pressed() -> void:
 		countdown.paused = false
 
 		start_pause_button.text = _l("Pause", "일시정지")
-		status_label.text = _l("Focusing", "집중 중")
-
-		session_resumed.emit(
-			task_name,
-			planned_minutes
+		status_label.text = (
+			_phase_running_text()
+			if current_phase != "focus"
+			else _l("Focusing", "집중 중")
 		)
+
+		if current_phase == "focus":
+			session_resumed.emit(task_name, planned_minutes)
 
 		return
 
@@ -473,14 +710,15 @@ func _on_start_pause_pressed() -> void:
 	start_pause_button.text = _l("Resume", "계속")
 	status_label.text = _l("Paused", "일시정지")
 
-	session_paused.emit(
-		task_name,
-		planned_minutes
-	)
+	if current_phase == "focus":
+		session_paused.emit(task_name, planned_minutes)
 
 func start_new_session() -> void:
 	last_finished_task_name = ""
 	_commit_time_text()
+	if timer_mode == "pomodoro" and current_phase != "focus":
+		_start_break_session()
+		return
 
 	active_task_name = (
 		get_entered_task_name()
@@ -493,6 +731,8 @@ func start_new_session() -> void:
 	countdown.start(
 		configured_seconds
 	)
+	halfway_emitted = false
+	ending_emitted = false
 
 	start_pause_button.text = _l("Pause", "일시정지")
 
@@ -510,6 +750,19 @@ func start_new_session() -> void:
 		roundi(
 			configured_seconds / 60.0
 		)
+	)
+
+func _start_break_session() -> void:
+	set_configuration_editable(false)
+	countdown.paused = false
+	countdown.start(configured_seconds)
+	start_pause_button.text = _l("Pause", "일시정지")
+	status_label.text = _phase_running_text()
+	update_display(configured_seconds)
+	pomodoro_phase_started.emit(
+		current_phase,
+		active_task_name if not active_task_name.is_empty() else _default_task_name(),
+		roundi(configured_seconds / 60.0)
 	)
 
 func _on_reset_pressed() -> void:
@@ -541,11 +794,20 @@ func _on_reset_pressed() -> void:
 		configured_seconds
 	)
 
-	if was_running:
+	if was_running and current_phase == "focus":
 		session_stopped.emit(
 			stopped_task,
 			planned_minutes
 		)
+
+	if timer_mode == "pomodoro":
+		current_phase = "focus"
+		completed_focus_count = 0
+		configured_seconds = focus_configured_seconds
+		duration_input.set_value_no_signal(configured_seconds / 60.0)
+		update_display(configured_seconds)
+		_refresh_mode_labels()
+		status_label.text = _phase_ready_text()
 
 func _on_time_text_submitted(_value: String) -> void:
 	_commit_time_text()
@@ -566,6 +828,10 @@ func _commit_time_text() -> void:
 		return
 
 	configured_seconds = parsed_seconds
+	if timer_mode == "pomodoro" and current_phase == "focus":
+		focus_configured_seconds = configured_seconds
+	if timer_mode == "standard":
+		standard_configured_seconds = configured_seconds
 	if duration_input != null:
 		duration_input.set_value_no_signal(configured_seconds / 60.0)
 	update_display(configured_seconds)
@@ -601,13 +867,35 @@ func _on_duration_changed(
 	configured_seconds = (
 		new_minutes * 60.0
 	)
+	if timer_mode == "pomodoro" and current_phase == "focus":
+		focus_configured_seconds = configured_seconds
+	if timer_mode == "standard":
+		standard_configured_seconds = configured_seconds
 
 	update_display(
 		configured_seconds
 	)
 
+func _on_short_break_changed(minutes: float) -> void:
+	short_break_seconds = minutes * 60.0
+	if timer_mode == "pomodoro" and current_phase == "short_break":
+		configured_seconds = short_break_seconds
+		update_display(configured_seconds)
+
+func _on_long_break_changed(minutes: float) -> void:
+	long_break_seconds = minutes * 60.0
+	if timer_mode == "pomodoro" and current_phase == "long_break":
+		configured_seconds = long_break_seconds
+		update_display(configured_seconds)
+
+func _on_automatic_breaks_toggled(enabled: bool) -> void:
+	automatic_breaks = enabled
+
 func _on_countdown_finished() -> void:
 	countdown.paused = false
+	if timer_mode == "pomodoro" and current_phase != "focus":
+		_finish_break_session()
+		return
 
 	var planned_minutes: int = roundi(
 		configured_seconds / 60.0
@@ -638,7 +926,50 @@ func _on_countdown_finished() -> void:
 		planned_minutes
 	)
 
-	active_task_name = ""
+	if timer_mode == "pomodoro":
+		completed_focus_count += 1
+		current_phase = (
+			"long_break"
+			if completed_focus_count >= POMODORO_FOCUS_COUNT
+			else "short_break"
+		)
+		configured_seconds = (
+			long_break_seconds
+			if current_phase == "long_break"
+			else short_break_seconds
+		)
+		set_configuration_editable(false)
+		start_pause_button.text = _l("Start break", "휴식 시작")
+		status_label.text = _phase_ready_text()
+		update_display(configured_seconds)
+		_refresh_mode_labels()
+		if automatic_breaks:
+			call_deferred("_start_break_session")
+		else:
+			pomodoro_break_prompted.emit(
+				finished_task, roundi(configured_seconds / 60.0)
+			)
+	else:
+		active_task_name = ""
+
+func _finish_break_session() -> void:
+	var finished_phase: String = current_phase
+	var break_minutes: int = roundi(configured_seconds / 60.0)
+	pomodoro_phase_finished.emit(
+		finished_phase,
+		active_task_name if not active_task_name.is_empty() else _default_task_name(),
+		break_minutes
+	)
+	if finished_phase == "long_break":
+		completed_focus_count = 0
+	current_phase = "focus"
+	configured_seconds = focus_configured_seconds
+	duration_input.set_value_no_signal(configured_seconds / 60.0)
+	set_configuration_editable(true)
+	start_pause_button.text = _l("Start", "시작")
+	status_label.text = _phase_ready_text()
+	update_display(configured_seconds)
+	_refresh_mode_labels()
 
 func update_display(
 	seconds_remaining: float
@@ -683,6 +1014,29 @@ func _process(
 
 	if countdown.is_stopped():
 		return
+
+	if current_phase == "focus":
+		var remaining: float = countdown.time_left
+		if (
+			not halfway_emitted
+			and configured_seconds >= 10.0 * 60.0
+			and remaining <= configured_seconds * 0.5
+		):
+			halfway_emitted = true
+			session_milestone.emit(
+				"halfway", active_task_name,
+				roundi(configured_seconds / 60.0)
+			)
+		if (
+			not ending_emitted
+			and configured_seconds > 10.0 * 60.0
+			and remaining <= 5.0 * 60.0
+		):
+			ending_emitted = true
+			session_milestone.emit(
+				"ending", active_task_name,
+				roundi(configured_seconds / 60.0)
+			)
 
 	update_display(
 		countdown.time_left

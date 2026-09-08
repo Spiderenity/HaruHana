@@ -103,6 +103,11 @@ func launch_updater() -> Dictionary:
 	if OS.get_name() != "Windows" or OS.has_feature("editor"):
 		return {"ok": false, "error": "windows_export_required"}
 
+	for kind: String in ["character_creator", "bubble_creator"]:
+		var state := JsonStore.load_dictionary("user://settings/runtime_instances/" + kind + ".json", {})
+		var pid := int(state.get("pid", 0))
+		if pid > 0 and OS.is_process_running(pid):
+			return {"ok": false, "error": "close_creators_required"}
 	var install_directory: String = OS.get_executable_path().get_base_dir()
 	var updater_path: String = install_directory.path_join(UPDATER_EXE_NAME)
 	var package_path: String = ProjectSettings.globalize_path(UPDATE_ZIP_PATH)

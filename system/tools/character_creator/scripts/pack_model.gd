@@ -451,10 +451,17 @@ func get_line_groups(character_index: int) -> Array[Dictionary]:
 	return [
 		{"id": "first_boot", "label": "첫 부팅", "scope": "dialogue", "path": ["first_boot", "lines"]},
 		{"id": "idle", "label": "대기", "scope": "dialogue", "path": ["fallback_dialogue", "idle"]},
+		{"id": "timer_start", "label": "타이머 시작", "scope": "dialogue", "path": ["fallback_dialogue", "timer_start"]},
+		{"id": "timer_halfway", "label": "타이머 절반", "scope": "dialogue", "path": ["fallback_dialogue", "timer_halfway"]},
+		{"id": "timer_ending", "label": "타이머 5분 전", "scope": "dialogue", "path": ["fallback_dialogue", "timer_ending"]},
 		{"id": "timer_complete", "label": "타이머 완료", "scope": "dialogue", "path": ["fallback_dialogue", "timer_complete"]},
 		{"id": "timer_pause", "label": "타이머 일시정지", "scope": "dialogue", "path": ["fallback_dialogue", "timer_pause"]},
 		{"id": "timer_resume", "label": "타이머 재개", "scope": "dialogue", "path": ["fallback_dialogue", "timer_resume"]},
 		{"id": "timer_stop", "label": "타이머 중단", "scope": "dialogue", "path": ["fallback_dialogue", "timer_stop"]},
+		{"id": "pomodoro_break_prompt", "label": "뽀모도로 휴식 질문", "scope": "dialogue", "path": ["fallback_dialogue", "pomodoro_break_prompt"]},
+		{"id": "pomodoro_break_start", "label": "뽀모도로 휴식 시작", "scope": "dialogue", "path": ["fallback_dialogue", "pomodoro_break_start"]},
+		{"id": "pomodoro_break_complete", "label": "뽀모도로 휴식 완료", "scope": "dialogue", "path": ["fallback_dialogue", "pomodoro_break_complete"]},
+		{"id": "pomodoro_cycle_complete", "label": "뽀모도로 사이클 완료", "scope": "dialogue", "path": ["fallback_dialogue", "pomodoro_cycle_complete"]},
 		{"id": "desktop_leave", "label": "데스크톱 떠남", "scope": "dialogue", "path": ["fallback_dialogue", "desktop_leave"]},
 		{"id": "desktop_arrive", "label": "데스크톱 도착", "scope": "dialogue", "path": ["fallback_dialogue", "desktop_arrive"]},
 		{"id": "boot_primary", "label": "부팅 기본", "scope": "desktop", "path": ["boot", "primary_lines", character_id]},
@@ -552,6 +559,24 @@ func set_secondary_locale(language: String, locale_data: Dictionary) -> void:
 	dirty = true
 
 func export_to(parent_directory: String) -> Dictionary:
+	var clean_id := _clean_id(pack_id)
+	if clean_id.is_empty():
+		return {"ok": false, "message": "Pack ID가 비어 있습니다."}
+	var target := parent_directory.path_join(clean_id)
+	var stage := PackageSave.begin(target)
+	if stage.is_empty():
+		return {"ok": false, "message": "저장 준비에 실패했습니다. 기존 파일은 유지됩니다."}
+	var result := _export_staged(stage)
+	if not bool(result.get("ok", false)):
+		PackageSave.discard(stage)
+		return result
+	var error := PackageSave.commit(stage, target)
+	if error != OK:
+		return {"ok": false, "message": "팩을 교체하지 못했습니다. 기존 파일은 유지됩니다."}
+	dirty = false
+	return {"ok": true, "message": "내보냈습니다: " + target, "path": target}
+
+func _export_staged(target_root: String) -> Dictionary:
 	var clean_pack_id := _clean_id(pack_id)
 	if clean_pack_id.is_empty():
 		return {"ok": false, "message": "Pack ID가 비어 있습니다."}
@@ -559,7 +584,6 @@ func export_to(parent_directory: String) -> Dictionary:
 		return {"ok": false, "message": "캐릭터가 없습니다."}
 
 	pack_id = clean_pack_id
-	var target_root := parent_directory.path_join(pack_id)
 	var locale_root := target_root.path_join("locales").path_join(default_language)
 	_make_dir_recursive(locale_root)
 	_make_dir_recursive(target_root.path_join("sprites"))
@@ -614,8 +638,7 @@ func export_to(parent_directory: String) -> Dictionary:
 		return {"ok": false, "message": "ambient_dialogue.json을 저장하지 못했습니다."}
 	if not _export_secondary_locales(target_root):
 		return {"ok": false, "message": "추가 로캘 파일을 저장하지 못했습니다."}
-	dirty = false
-	return {"ok": true, "message": "내보냈습니다: %s" % target_root, "path": target_root}
+	return {"ok": true}
 
 func _export_secondary_locales(target_root: String) -> bool:
 	for language_value: Variant in secondary_locales.keys():
@@ -792,8 +815,11 @@ func _default_dialogue() -> Dictionary:
 	return {
 		"first_boot": {"lines": []},
 		"fallback_dialogue": {
-			"idle": [], "timer_complete": [], "timer_pause": [], "timer_resume": [],
-			"timer_stop": [], "desktop_leave": [], "desktop_arrive": []
+			"idle": [], "timer_start": [], "timer_halfway": [], "timer_ending": [],
+			"timer_complete": [], "timer_pause": [], "timer_resume": [],
+			"timer_stop": [], "pomodoro_break_prompt": [], "pomodoro_break_start": [],
+			"pomodoro_break_complete": [], "pomodoro_cycle_complete": [],
+			"desktop_leave": [], "desktop_arrive": []
 		}
 	}
 
@@ -1088,13 +1114,7 @@ func _read_json(path: String) -> Variant:
 	return json.data
 
 func _write_json(path: String, value: Variant) -> bool:
-	_make_dir_recursive(path.get_base_dir())
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
-		return false
-	file.store_string(JSON.stringify(value, "  ", false))
-	file.close()
-	return true
+	return JsonStore.save_json(path, value, "  ", false, false) == OK
 
 func _copy_file(source_path: String, destination_path: String) -> bool:
 	if source_path.begins_with("res://"):

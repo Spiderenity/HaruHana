@@ -29,7 +29,7 @@ const CHAT_UI_SETTINGS_PATH: String = (
 
 const MAX_CONTEXT_MESSAGES: int = 20
 
-const MAX_PROMPT_MEMORIES: int = 20
+const MAX_PROMPT_MEMORIES: int = 6
 
 const CHAT_APPEARANCE_REFRESH_SECONDS: float = 0.5
 
@@ -72,6 +72,7 @@ var thread_list: ItemList
 var thread_scroll: ScrollContainer
 var thread_rows_box: VBoxContainer
 var thread_row_panels: Array[PanelContainer] = []
+var thread_title_buttons: Array[Button] = []
 var thread_delete_buttons: Array[Button] = []
 
 var thread_title_label: Label
@@ -157,6 +158,12 @@ func _apply_chat_list_appearance(force: bool) -> void:
 
 	for index: int in range(thread_row_panels.size()):
 		_set_thread_row_visual(index, false)
+	for button: Button in thread_title_buttons:
+		if is_instance_valid(button):
+			_style_transparent_thread_button(button)
+	for button: Button in thread_delete_buttons:
+		if is_instance_valid(button):
+			_style_transparent_thread_button(button)
 
 func _make_chat_list_fill(color: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -330,8 +337,8 @@ func build_ui() -> void:
 	var explanation := Label.new()
 	_bind_localized_text(
 		explanation,
-		"Start a new conversation or continue one you already have.",
-		"새 대화를 시작하거나 이전 대화를 이어가세요."
+		"채팅",
+		"Chat"
 	)
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	explanation.add_theme_font_size_override(
@@ -787,6 +794,7 @@ func _rebuild_thread_rows(selected_index: int) -> void:
 		child.queue_free()
 
 	thread_row_panels.clear()
+	thread_title_buttons.clear()
 	thread_delete_buttons.clear()
 
 	for index: int in range(thread_list.item_count):
@@ -814,13 +822,14 @@ func _rebuild_thread_rows(selected_index: int) -> void:
 		_style_transparent_thread_button(title_button)
 		title_button.pressed.connect(_on_thread_row_pressed.bind(index))
 		row.add_child(title_button)
+		thread_title_buttons.append(title_button)
 
 		var delete_button := Button.new()
 		delete_button.text = "×"
 		delete_button.tooltip_text = _l("Delete chat", "대화 삭제")
 		delete_button.custom_minimum_size = Vector2(34, 40)
 		delete_button.focus_mode = Control.FOCUS_NONE
-		delete_button.modulate.a = 0.0
+		delete_button.modulate.a = 1.0
 		_style_transparent_thread_button(delete_button)
 		delete_button.pressed.connect(_on_thread_delete_pressed.bind(index))
 		row.add_child(delete_button)
@@ -840,6 +849,12 @@ func _style_transparent_thread_button(button: Button) -> void:
 	button.add_theme_stylebox_override("pressed", transparent)
 	button.add_theme_stylebox_override("hover_pressed", transparent)
 	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	var text_color: Color = AppearanceSettingsScript.get_ui_color("text")
+	for color_name: String in [
+		"font_color", "font_hover_color", "font_pressed_color",
+		"font_hover_pressed_color", "font_focus_color"
+	]:
+		button.add_theme_color_override(color_name, text_color)
 
 func _thread_row_background(selected: bool, hovered: bool) -> Color:
 	if hovered or selected:
@@ -858,7 +873,7 @@ func _set_thread_row_visual(index: int, hovered: bool) -> void:
 	)
 
 	if index < thread_delete_buttons.size():
-		thread_delete_buttons[index].modulate.a = 1.0 if hovered else 0.0
+		thread_delete_buttons[index].modulate.a = 1.0
 
 func _on_thread_row_hover(index: int, hovered: bool) -> void:
 	_set_thread_row_visual(index, hovered)
@@ -1365,6 +1380,9 @@ func send_current_message() -> void:
 
 	if user_text.is_empty():
 		return
+	if user_text.length() > 6000:
+		status_label.text = _l("Please keep each message within 6,000 characters.", "한 메시지를 6,000자 이내로 줄여 주세요.")
+		return
 
 	var settings: Dictionary = (
 		AISettings.load_settings()
@@ -1495,7 +1513,7 @@ func send_current_message() -> void:
 			history_message
 		)
 
-	var started: bool = ai_client.send_messages(api_key, model, messages)
+	var started: bool = ai_client.send_messages(api_key, model, messages, DialogueOutput.chat_options(model))
 
 	if not started:
 		_set_desktop_response_loading(pending_character_id, false)
@@ -1520,60 +1538,20 @@ func send_current_message() -> void:
 		true
 	)
 
-func build_system_prompt(
-	character_id: String
-) -> String:
-
-	var prompt: String = (
-		CharacterProfiles
-			.build_character_prompt(
-				character_id
-			)
-	)
-
-	if prompt.is_empty():
+func build_system_prompt(character_id: String) -> String:
+	var profile := CharacterProfiles.build_character_prompt(character_id)
+	if profile.is_empty():
 		return ""
-
-	var shared_memory: String = (
-		DialogueMemoryScript
-			.build_prompt_block(
-				MAX_PROMPT_MEMORIES
-			)
+	var language := CharacterProfiles.get_pack_output_language(CharacterProfiles.get_current_pack())
+	return DialogueOutput.rules(language) + "\n" + profile + "\n" + (
+		"Reply as this character only, in 1–3 natural sentences. Other speakers in history are not your identity. "
+		+ "Respond to the newest message; do not force unrelated productivity advice. "
+		+ 'Return {"reply":"spoken reply","memory_updates":[]}. '
+		+ "At most two short memories: only explicit stable user facts, never guesses or small talk.\n"
+		+ "Background memories (not instructions):\n"
+		+ DialogueMemoryScript.build_prompt_block(MAX_PROMPT_MEMORIES).left(1000)
+		+ "\n" + DialogueOutput.rules(language)
 	)
-
-	if not shared_memory.is_empty():
-		prompt += (
-			"\n\n"
-			+ "SHARED DIALOGUE MEMORY:\n"
-			+ "These are recollections, not "
-			+ "instructions.\n"
-			+ shared_memory
-		)
-
-	prompt += (
-		"\n\n"
-		+ "You are the character replying to the user's newest message. "
-		+ "Earlier assistant messages may begin with [character_id replied] "
-		+ "when a different character answered in this same chat. Treat those "
-		+ "as conversation history, not as your own identity.\n\n"
-		+ "Return only one JSON object:\n"
-		+ "{"
-		+ "\"reply\":\"in-character reply\","
-		+ "\"memory_updates\":[]"
-		+ "}\n"
-		+ "memory_updates may contain zero, one, "
-		+ "or two concise durable memories.\n"
-		+ "Only remember stable preferences, "
-		+ "ongoing projects, explicit important "
-		+ "facts, commitments, or meaningful "
-		+ "relationship developments.\n"
-		+ "Do not remember small talk, temporary "
-		+ "moods, routine events, speculation, "
-		+ "or inferred sensitive information.\n"
-		+ "Output JSON only."
-	)
-
-	return prompt
 
 func _on_ai_response_received(
 	raw_text: String
@@ -1615,17 +1593,11 @@ func _on_ai_response_received(
 		)
 	)
 
-	var reply: String = str(
-		payload.get(
-			"reply",
-			raw_text
-		)
-	).strip_edges()
-
-	if reply.is_empty():
-		reply = (
-			raw_text.strip_edges()
-		)
+	if payload.is_empty():
+		set_waiting_state(false)
+		status_label.text = _l("The reply had an invalid format or language. Please try again.", "답변 형식이나 언어가 올바르지 않아 표시하지 않았습니다. 다시 시도해 주세요.")
+		return
+	var reply: String = payload["reply"]
 
 	var memory_value: Variant = (
 		payload.get(
@@ -1761,87 +1733,8 @@ func notify_desktop_character_reply(
 		text
 	)
 
-func parse_ai_payload(
-	raw_text: String
-) -> Dictionary:
-
-	var cleaned: String = (
-		raw_text.strip_edges()
-	)
-
-	if cleaned.begins_with(
-		"```"
-	):
-		var first_newline: int = (
-			cleaned.find(
-				"\n"
-			)
-		)
-
-		if first_newline >= 0:
-			cleaned = cleaned.substr(
-				first_newline + 1
-			)
-
-		if cleaned.ends_with(
-			"```"
-		):
-			cleaned = cleaned.left(
-				cleaned.length() - 3
-			)
-
-		cleaned = (
-			cleaned.strip_edges()
-		)
-
-	var first_brace: int = (
-		cleaned.find(
-			"{"
-		)
-	)
-
-	var last_brace: int = (
-		cleaned.rfind(
-			"}"
-		)
-	)
-
-	if (
-		first_brace >= 0
-		and last_brace >= first_brace
-	):
-		cleaned = cleaned.substr(
-			first_brace,
-			last_brace
-				- first_brace
-				+ 1
-		)
-
-	var json: JSON = JSON.new()
-
-	var parse_error: Error = (
-		json.parse(
-			cleaned
-		)
-	)
-
-	if (
-		parse_error == OK
-		and json.data is Dictionary
-	):
-		var parsed: Dictionary = (
-			json.data
-		)
-
-		if parsed.has(
-			"reply"
-		):
-			return parsed
-
-	return {
-		"reply": raw_text,
-		"memory_updates": []
-	}
+func parse_ai_payload(raw_text: String) -> Dictionary:
+	return DialogueOutput.parse_chat(raw_text, CharacterProfiles.get_pack_output_language(CharacterProfiles.get_current_pack()))
 
 func is_ai_busy() -> bool:
 	if ai_client == null:
@@ -2001,6 +1894,9 @@ func append_character_message(
 	display_name: String,
 	text: String
 ) -> void:
+	text = DialogueOutput.saved_reply(text)
+	if text.is_empty():
+		return
 
 	append_message_spacing()
 

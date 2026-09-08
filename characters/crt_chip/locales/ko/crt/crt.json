@@ -54,6 +54,21 @@
       "(tired)계속 화면만 보고 있으면 눈 좀 떼. 잠깐이면 되니까.",
       "나 여기 있어. (annoyed)...그러니까 확인한다고 자꾸 누르지 마."
     ],
+    "timer_start": [
+      "시작했네. (neutral)그럼 끝날 때까지는 집중해.",
+      "\"{task}\" 시작. (curious)이번엔 얼마나 하나 보자.",
+      "{minutes}분 설정했어. (annoyed)...시간 낭비하진 마."
+    ],
+    "timer_halfway": [
+      "절반 지났어. (neutral)아직 흐트러질 때는 아니야.",
+      "이제 반 남았네. (curious)페이스는 괜찮아?",
+      "절반. (annoyed)시계만 보지 말고 계속해."
+    ],
+    "timer_ending": [
+      "5분 남았어. (neutral)하던 데까진 정리해.",
+      "이제 마무리할 시간 생각해 둬. (curious)5분 남았으니까.",
+      "5분. (annoyed)갑자기 서두르진 말고."
+    ],
     "timer_complete": [
       "\"{task}\" {minutes}분 끝났어. (neutral)그래도 끝까지 하긴 했네.",
       "타이머 끝. (tired){minutes}분이나 했으니까 잠깐 쉬어도 되겠네.",
@@ -73,6 +88,26 @@
       "\"{task}\"는 여기까지야? (curious)...네가 정한 거면 알았어.",
       "벌써 그만두는 거야? (annoyed)...뭐, 이유가 있겠지.",
       "중단했네. (neutral)다음에 다시 할 거면 기억은 해 둬."
+    ],
+    "pomodoro_break_prompt": [
+      "휴식 구간이야. (curious)쉴 거야?",
+      "다음은 휴식인데. (neutral)시작할 거지?",
+      "바로 계속할 생각은 아니지? (annoyed)휴식할 거야?"
+    ],
+    "pomodoro_break_start": [
+      "휴식 시간이야. (tired)잠깐은 화면에서 눈 떼.",
+      "여기서 쉬어. (neutral)다음 집중 전까지만.",
+      "쉬는 것도 구간에 포함된 거니까. (annoyed)괜히 건너뛰지 마."
+    ],
+    "pomodoro_break_complete": [
+      "휴식 끝. (neutral)다시 준비해.",
+      "시간 됐어. (curious)다음 집중으로 갈 수 있겠어?",
+      "이제 돌아올 때야. (annoyed)너무 아쉬워하진 말고."
+    ],
+    "pomodoro_cycle_complete": [
+      "한 사이클 끝냈네. (neutral)이 정도면 제대로 했어.",
+      "긴 휴식까지 끝. (curious)계속할지는 네가 정해.",
+      "네 번 채웠어. (embarrassed)...수고했다고는 해 둘게."
     ],
     "desktop_leave": [
       "잠깐 나갔다 올게. (annoyed)없는 동안 딴짓하지 마.",

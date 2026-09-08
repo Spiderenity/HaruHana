@@ -24,63 +24,18 @@ static func load_dictionary(path: String, fallback: Dictionary = {}) -> Dictiona
 	return fallback.duplicate(true)
 
 static func save_json(
-	path: String,
-	value: Variant,
-	indent: String = "\t",
-	trailing_newline: bool = false
+	path: String, value: Variant, indent: String = "\t",
+	trailing_newline: bool = false, keep_backup: bool = true
 ) -> Error:
-	var directory_error: Error = _ensure_parent_directory(path)
-	if directory_error != OK:
-		return directory_error
-
-	var temp_path: String = path + TEMP_SUFFIX
-	var backup_path: String = path + BACKUP_SUFFIX
-	_remove_if_exists(temp_path)
-
-	var file: FileAccess = FileAccess.open(temp_path, FileAccess.WRITE)
-	if file == null:
-		return FileAccess.get_open_error()
-
-	var text: String = JSON.stringify(value, indent)
+	var text := JSON.stringify(value, indent)
 	if trailing_newline:
 		text += "\n"
-
-	file.store_string(text)
-	file.flush()
-	file.close()
-
-	if _read_json_file(temp_path) == null:
-		_remove_if_exists(temp_path)
-		return ERR_FILE_CORRUPT
-
-	var absolute_path: String = _absolute(path)
-	var absolute_temp: String = _absolute(temp_path)
-	var absolute_backup: String = _absolute(backup_path)
-
-	_remove_if_exists(backup_path)
-
-	var had_original: bool = FileAccess.file_exists(path)
-	if had_original:
-		var backup_error: Error = DirAccess.rename_absolute(
-			absolute_path,
-			absolute_backup
-		)
-		if backup_error != OK:
-			_remove_if_exists(temp_path)
-			return backup_error
-
-	var replace_error: Error = DirAccess.rename_absolute(
-		absolute_temp,
-		absolute_path
-	)
-	if replace_error != OK:
-		if had_original and not FileAccess.file_exists(path):
-			DirAccess.rename_absolute(absolute_backup, absolute_path)
-		_remove_if_exists(temp_path)
-		return replace_error
-
-	_remove_if_exists(backup_path)
-	return OK
+	# A corrupt primary must not replace the last valid backup.
+	if FileAccess.file_exists(path) and _read_json_file(path) == null:
+		var quarantine_error := DirAccess.rename_absolute(_absolute(path), _absolute(path + ".corrupt"))
+		if quarantine_error != OK:
+			return quarantine_error
+	return AtomicFile.save_text(path, text, keep_backup)
 
 static func _read_json_file(path: String) -> Variant:
 	if not FileAccess.file_exists(path):

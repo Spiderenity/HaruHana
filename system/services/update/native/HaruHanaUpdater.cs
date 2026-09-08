@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -12,8 +12,8 @@ using System.Threading;
 [assembly: AssemblyDescription("Installs verified HaruHana releases")]
 [assembly: AssemblyCompany("HaruHana")]
 [assembly: AssemblyProduct("HaruHana")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 internal static class HaruHanaUpdater
 {
@@ -22,6 +22,7 @@ internal static class HaruHanaUpdater
     private const string BubbleCreatorExecutable = "말풍선 크리에이터.exe";
     private const string UpdaterExecutable = "HaruHanaUpdater.exe";
     private const string FinalizerExecutable = "HaruHanaUpdater.finalize.exe";
+    private const string NativeLibrary = "mouse_passthrough.windows.template_release.x86_64.dll";
     private const int DeleteOnReboot = 4;
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -56,6 +57,7 @@ internal static class HaruHanaUpdater
             DeleteDirectory(stagingDirectory);
             Directory.CreateDirectory(stagingDirectory);
             ExtractPackage(packagePath, stagingDirectory);
+            stagingDirectory = ResolvePackageRoot(stagingDirectory);
             ValidatePackage(stagingDirectory);
             DeleteDirectory(Path.Combine(stagingDirectory, "characters"));
             DeleteDirectory(Path.Combine(stagingDirectory, "bubbles"));
@@ -104,11 +106,13 @@ internal static class HaruHanaUpdater
             string updateDirectory = Path.GetDirectoryName(statusPath);
             string stagingDirectory = Path.Combine(updateDirectory, "staged");
             string errorPath = Path.Combine(updateDirectory, "update_error.txt");
+            stagingDirectory = ResolvePackageRoot(stagingDirectory);
             WaitForExit(mainProcessId, TimeSpan.FromSeconds(130));
             WaitForExit(updaterProcessId, TimeSpan.FromSeconds(15));
             if (!Directory.Exists(stagingDirectory))
                 throw new UpdateException("staging_missing");
-            CopyDirectory(stagingDirectory, installDirectory);
+            WaitForApplications(installDirectory, TimeSpan.FromSeconds(130));
+            InstallTransaction(stagingDirectory, installDirectory, Path.Combine(updateDirectory, "rollback"));
             DeleteDirectory(stagingDirectory);
             TryDeleteFile(packagePath);
             TryDeleteFile(errorPath);
@@ -119,7 +123,8 @@ internal static class HaruHanaUpdater
         catch (Exception exception)
         {
             WriteErrorFile(statusPath, ErrorCode(exception, "update_install_failed"));
-            TryRestart(options);
+            if (!(exception is UpdateException) || ((UpdateException)exception).Code != "rollback_failed")
+                TryRestart(options);
             ScheduleSelfDeletion();
             return 1;
         }
@@ -184,27 +189,50 @@ internal static class HaruHanaUpdater
         Directory.CreateDirectory(statusDirectory);
     }
 
+    private static string ResolvePackageRoot(string root)
+    {
+        if (File.Exists(Path.Combine(root, MainExecutable))) return root;
+        string[] directories = Directory.GetDirectories(root);
+        if (Directory.GetFiles(root).Length == 0 && directories.Length == 1 &&
+            File.Exists(Path.Combine(directories[0], MainExecutable))) return directories[0];
+        throw new UpdateException("package_layout_invalid");
+    }
+
     private static void ExtractPackage(string packagePath, string stagingDirectory)
     {
         string root = EnsureTrailingSeparator(Path.GetFullPath(stagingDirectory));
+        HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        long total = 0;
         using (ZipArchive archive = ZipFile.OpenRead(packagePath))
         {
+            if (archive.Entries.Count > 4096) throw new UpdateException("package_too_large");
             foreach (ZipArchiveEntry entry in archive.Entries)
             {
-                string targetPath = Path.GetFullPath(Path.Combine(stagingDirectory, entry.FullName));
-                if (!targetPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                string name = entry.FullName.Replace('\\', '/');
+                if (name.StartsWith("/") || name.Contains(":") || name.Contains("../") || name.Contains("./") || name.Contains("\t"))
                     throw new UpdateException("unsafe_package_path");
-                if (String.IsNullOrEmpty(entry.Name))
-                {
-                    Directory.CreateDirectory(targetPath);
-                    continue;
-                }
-                string parent = Path.GetDirectoryName(targetPath);
-                if (!String.IsNullOrEmpty(parent))
-                    Directory.CreateDirectory(parent);
+                string targetPath = Path.GetFullPath(Path.Combine(stagingDirectory, name));
+                if (!targetPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !seen.Add(targetPath))
+                    throw new UpdateException("unsafe_package_path");
+                if (String.IsNullOrEmpty(entry.Name)) { Directory.CreateDirectory(targetPath); continue; }
+                total += entry.Length;
+                if (entry.Length > 512L * 1024 * 1024 || total > 1536L * 1024 * 1024)
+                    throw new UpdateException("package_too_large");
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath));
                 using (Stream input = entry.Open())
-                using (FileStream output = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                    input.CopyTo(output);
+                using (FileStream output = new FileStream(targetPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    byte[] buffer = new byte[65536];
+                    long written = 0;
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        written += read;
+                        if (written > entry.Length) throw new UpdateException("package_too_large");
+                        output.Write(buffer, 0, read);
+                    }
+                    if (written != entry.Length) throw new UpdateException("package_layout_invalid");
+                }
             }
         }
     }
@@ -215,31 +243,137 @@ internal static class HaruHanaUpdater
             MainExecutable,
             CharacterCreatorExecutable,
             BubbleCreatorExecutable,
-            UpdaterExecutable
+            UpdaterExecutable,
+            NativeLibrary
         };
         foreach (string fileName in requiredFiles)
         {
-            if (!File.Exists(Path.Combine(stagingDirectory, fileName)))
+            if (!File.Exists(Path.Combine(stagingDirectory, fileName)) || new FileInfo(Path.Combine(stagingDirectory, fileName)).Length == 0)
                 throw new UpdateException("package_layout_invalid");
         }
     }
 
-    private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
+    private static void WaitForApplications(string installDirectory, TimeSpan timeout)
     {
-        foreach (string directory in Directory.GetDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
+        DateTime deadline = DateTime.UtcNow + timeout;
+        string[] names = { MainExecutable, CharacterCreatorExecutable, BubbleCreatorExecutable };
+        foreach (string name in names)
+        foreach (Process process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(name)))
+        using (process)
         {
-            string relative = directory.Substring(sourceDirectory.Length).TrimStart(Path.DirectorySeparatorChar);
-            Directory.CreateDirectory(Path.Combine(destinationDirectory, relative));
+            try
+            {
+                if (!PathsEqual(process.MainModule.FileName, Path.Combine(installDirectory, name))) continue;
+                int remaining = Math.Max(0, (int)(deadline - DateTime.UtcNow).TotalMilliseconds);
+                if (!process.WaitForExit(remaining)) throw new UpdateException("close_creators_required");
+            }
+            catch (InvalidOperationException) { } // Process already exited.
         }
-        foreach (string file in Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories))
+    }
+
+    private static string SafeChild(string root, string relative)
+    {
+        string path = Path.GetFullPath(Path.Combine(root, relative));
+        if (!path.StartsWith(EnsureTrailingSeparator(Path.GetFullPath(root)), StringComparison.OrdinalIgnoreCase))
+            throw new UpdateException("unsafe_package_path");
+        return path;
+    }
+
+    private static bool IsManagedFile(string relative)
+    {
+        return relative == MainExecutable || relative == CharacterCreatorExecutable ||
+            relative == BubbleCreatorExecutable || relative == UpdaterExecutable || relative == NativeLibrary;
+    }
+
+    // The journal and originals survive interruption. The next attempt restores them first.
+    private static void InstallTransaction(string source, string destination, string rollback)
+    {
+        try { RecoverTransaction(destination, rollback); }
+        catch { throw new UpdateException("rollback_failed"); }
+        ValidatePackage(source);
+        List<string> files = new List<string>();
+        foreach (string path in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
-            string relative = file.Substring(sourceDirectory.Length).TrimStart(Path.DirectorySeparatorChar);
-            string target = Path.Combine(destinationDirectory, relative);
-            string parent = Path.GetDirectoryName(target);
-            if (!String.IsNullOrEmpty(parent))
-                Directory.CreateDirectory(parent);
-            File.Copy(file, target, true);
+            string relative = path.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar);
+            // Existing custom fonts, bubbles and characters belong to the user.
+            bool newFont = relative.StartsWith("fonts" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && Path.GetExtension(relative).Equals(".ttf", StringComparison.OrdinalIgnoreCase)
+                && !File.Exists(SafeChild(destination, relative));
+            if (IsManagedFile(relative) || newFont) files.Add(relative);
         }
+        foreach (string relative in files)
+        {
+            string target = SafeChild(destination, relative);
+            if (File.Exists(target))
+                using (FileStream probe = new FileStream(target, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }
+        }
+        Directory.CreateDirectory(rollback);
+        List<string> journal = new List<string>();
+        foreach (string relative in files)
+        {
+            string target = SafeChild(destination, relative);
+            bool existed = File.Exists(target);
+            if (existed)
+            {
+                string backup = SafeChild(rollback, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(backup));
+                File.Copy(target, backup, true);
+            }
+            journal.Add((existed ? "1" : "0") + "\t" + relative);
+        }
+        string journalPath = Path.Combine(rollback, "journal.txt");
+        File.WriteAllLines(journalPath, journal.ToArray(), new UTF8Encoding(false));
+        try
+        {
+            int installed = 0;
+            foreach (string relative in files)
+            {
+                ReplaceFile(SafeChild(source, relative), SafeChild(destination, relative));
+                installed++;
+#if UPDATER_TESTS
+                if (TestFailAfter == installed) throw new IOException("Injected interrupted update");
+#endif
+            }
+            File.Delete(journalPath); // Commit before cleanup; stale backups alone never trigger rollback.
+        }
+        catch
+        {
+            try { RecoverTransaction(destination, rollback); }
+            catch { throw new UpdateException("rollback_failed"); }
+            throw;
+        }
+        try { DeleteDirectory(rollback); } catch { }
+    }
+
+#if UPDATER_TESTS
+    internal static int TestFailAfter = -1;
+#endif
+
+    private static void RecoverTransaction(string destination, string rollback)
+    {
+        string journal = Path.Combine(rollback, "journal.txt");
+        if (!File.Exists(journal)) return;
+        foreach (string entry in File.ReadAllLines(journal))
+        {
+            string[] parts = entry.Split(new char[] { '\t' }, 2);
+            if (parts.Length != 2 || (!IsManagedFile(parts[1]) && !parts[1].StartsWith("fonts" + Path.DirectorySeparatorChar)))
+                throw new UpdateException("rollback_failed");
+            string target = SafeChild(destination, parts[1]);
+            if (parts[0] == "1") ReplaceFile(SafeChild(rollback, parts[1]), target);
+            else if (parts[0] == "0" && File.Exists(target)) File.Delete(target);
+            TryDeleteFile(target + ".update-new");
+        }
+        File.Delete(journal);
+        DeleteDirectory(rollback);
+    }
+
+    private static void ReplaceFile(string source, string target)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(target));
+        string temporary = target + ".update-new";
+        File.Copy(source, temporary, true);
+        if (File.Exists(target)) File.Replace(temporary, target, null);
+        else File.Move(temporary, target);
     }
 
     private static void WaitForExit(int processId, TimeSpan timeout)
@@ -292,7 +426,9 @@ internal static class HaruHanaUpdater
             string json = ok
                 ? "{\"ok\":true,\"error\":\"\"}"
                 : "{\"ok\":false,\"error\":\"" + JsonEscape(error) + "\"}";
-            File.WriteAllText(path, json, new UTF8Encoding(false));
+            File.WriteAllText(path + ".tmp", json, new UTF8Encoding(false));
+            if (File.Exists(path)) File.Replace(path + ".tmp", path, null);
+            else File.Move(path + ".tmp", path);
         }
         catch
         {

@@ -11,7 +11,8 @@ const INSTANCE_KINDS: Array[String] = [
 const STATE_DIRECTORY := "user://settings/runtime_instances"
 const LOCK_DIRECTORY := "user://settings/runtime_instance_locks"
 const COMMAND_DIRECTORY := "user://settings/runtime_instance_commands"
-const PUBLISH_INTERVAL_SECONDS := 0.35
+const PUBLISH_INTERVAL_SECONDS := 2.0
+const COMMAND_POLL_SECONDS := 0.2
 const PLACEMENT_HANDSHAKE_SECONDS := 1.25
 const INSTANCE_LEASE_SECONDS := 5.0
 
@@ -19,6 +20,9 @@ var instance_kind := ""
 var process_id := 0
 var character_manager: DesktopCharacterManager = null
 var publish_accumulator := 0.0
+var command_accumulator := 0.0
+var last_published_rects: Array = []
+var has_published := false
 var claimed := false
 var started_at := 0.0
 var placement_generation := 0
@@ -74,7 +78,10 @@ func get_other_character_rects() -> Array[Rect2]:
 func _process(delta: float) -> void:
 	if not claimed:
 		return
-	_poll_commands()
+	command_accumulator += maxf(0.0, delta)
+	if command_accumulator >= COMMAND_POLL_SECONDS:
+		command_accumulator = 0.0
+		_poll_commands()
 	publish_accumulator += maxf(0.0, delta)
 	if publish_accumulator < PUBLISH_INTERVAL_SECONDS:
 		return
@@ -168,18 +175,16 @@ func publish_now() -> void:
 				"width": rect.size.x,
 				"height": rect.size.y,
 			})
+	if has_published and rects == last_published_rects:
+		return
+	has_published = true
+	last_published_rects = rects.duplicate(true)
 	_write_json(_state_path(instance_kind), {
 		"kind": instance_kind,
 		"pid": process_id,
 		"started": started_at,
 		"updated": Time.get_unix_time_from_system(),
 		"rects": rects,
-	})
-	_write_json(_lock_owner_path(instance_kind), {
-		"kind": instance_kind,
-		"pid": process_id,
-		"started": started_at,
-		"updated": Time.get_unix_time_from_system(),
 	})
 
 func _exit_tree() -> void:
@@ -240,17 +245,15 @@ func _load_live_state(kind: String) -> Dictionary:
 	return {}
 
 func _entry_has_fresh_lease(entry: Dictionary) -> bool:
-	var heartbeat := float(entry.get("updated", entry.get("created", 0.0)))
-	if heartbeat <= 0.0:
-		return false
-	var age := Time.get_unix_time_from_system() - heartbeat
-	return age >= -1.0 and age <= INSTANCE_LEASE_SECONDS
+	# Wall-clock leases expire during sleep or a busy main thread. Process liveness does not.
+	var pid := int(entry.get("pid", 0))
+	return pid > 0 and OS.is_process_running(pid)
 
 func _read_json(path: String) -> Dictionary:
 	return JsonStore.load_dictionary(path, {})
 
 func _write_json(path: String, value: Dictionary) -> Error:
-	return JsonStore.save_json(path, value, "	", true)
+	return JsonStore.save_json(path, value, "	", true, false)
 
 func _state_path(kind: String) -> String:
 	return STATE_DIRECTORY.path_join(kind + ".json")

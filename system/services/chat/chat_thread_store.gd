@@ -307,100 +307,40 @@ static func delete_thread(
 	):
 		return ERR_FILE_NOT_FOUND
 
-	return directory.remove(
-		file_name
-	)
+	# Deleted threads must not be resurrected from their recovery copy.
+	for suffix: String in [".bak", ".corrupt", ".tmp"]:
+		if directory.file_exists(file_name + suffix):
+			var error := directory.remove(file_name + suffix)
+			if error != OK:
+				return error
+	return directory.remove(file_name)
 
-static func get_context_messages(
-	thread_id: String,
-	max_messages: int
-) -> Array:
-
+static func get_context_messages(thread_id: String, max_messages: int) -> Array:
+	var source: Variant = load_thread(thread_id).get("messages", [])
+	if not source is Array or max_messages <= 0:
+		return []
 	var result: Array = []
-
-	if max_messages <= 0:
-		return result
-
-	var thread: Dictionary = (
-		load_thread(
-			thread_id
-		)
-	)
-
-	if thread.is_empty():
-		return result
-
-	var messages_value: Variant = (
-		thread.get(
-			"messages",
-			[]
-		)
-	)
-
-	if not (
-		messages_value is Array
-	):
-		return result
-
-	var messages: Array = (
-		messages_value
-	)
-
-	var start_index: int = maxi(
-		0,
-		messages.size() - max_messages
-	)
-
-	for index: int in range(
-		start_index,
-		messages.size()
-	):
-		var value: Variant = (
-			messages[index]
-		)
-
-		if not (
-			value is Dictionary
-		):
+	var used := 0
+	# Keep recent context within a character budget, independently of the 200-message archive.
+	for index: int in range(source.size() - 1, -1, -1):
+		var item: Variant = source[index]
+		if not item is Dictionary:
 			continue
-
-		var message: Dictionary = value
-
-		var role: String = str(
-			message.get(
-				"role",
-				""
-			)
-		)
-
-		var content: String = str(
-			message.get(
-				"content",
-				""
-			)
-		).strip_edges()
-
-		if (
-			role != "user"
-			and role != "assistant"
-		):
+		var role := str(item.get("role", ""))
+		if role not in ["user", "assistant"]:
 			continue
-
+		var content := str(item.get("content", "")).strip_edges()
+		if role == "assistant":
+			content = DialogueOutput.saved_reply(content)
 		if content.is_empty():
 			continue
-
+		# Never silently truncate the newest user message. The UI validates its limit before saving.
+		if used + content.length() > 6000 or result.size() >= mini(max_messages, 12):
+			break
 		if role == "assistant":
-			var character_id: String = str(
-				message.get("character_id", "")
-			).strip_edges().to_lower()
-			if not character_id.is_empty():
-				content = "[" + character_id + " replied] " + content
-
-		result.append({
-			"role": role,
-			"content": content,
-		})
-
+			content = JSON.stringify({"speaker": str(item.get("character_id", "")), "reply": content})
+		used += content.length()
+		result.push_front({"role": role, "content": content})
 	return result
 
 static func get_message_count(

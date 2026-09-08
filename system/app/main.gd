@@ -455,6 +455,18 @@ func connect_runtime_signals() -> void:
 	board_window.focus_session_resumed.connect(focus_controller._on_focus_session_resumed)
 	board_window.focus_session_stopped.connect(focus_controller._on_focus_session_stopped)
 	board_window.focus_session_completed.connect(focus_controller._on_focus_session_completed)
+	board_window.focus_session_milestone.connect(
+		focus_controller._on_focus_session_milestone
+	)
+	board_window.pomodoro_phase_started.connect(
+		focus_controller._on_pomodoro_phase_started
+	)
+	board_window.pomodoro_phase_finished.connect(
+		focus_controller._on_pomodoro_phase_finished
+	)
+	board_window.pomodoro_break_prompted.connect(
+		focus_controller._on_pomodoro_break_prompted
+	)
 	board_window.focus_timer_updated.connect(
 		desktop_character_manager.set_focus_timer_state
 	)

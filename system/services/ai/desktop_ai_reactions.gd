@@ -22,10 +22,17 @@ const DEFAULT_MOOD: String = DialogueCatalogScript.DEFAULT_MOOD
 const VALID_MOODS: Array[String] = DialogueCatalogScript.BASE_MOODS
 
 const FOCUS_EVENT_KEYS: Array[String] = [
+	"start",
+	"halfway",
+	"ending",
 	"pause",
 	"resume",
 	"stop",
-	"end"
+	"end",
+	"break_prompt",
+	"break_start",
+	"break_end",
+	"cycle_end"
 ]
 
 var ai_client: AIClient = null
@@ -164,7 +171,7 @@ func request_focus_session_bundle(
 		{
 			"role": "user",
 			"content": (
-				"Generate the four possible timer reactions now."
+				"Generate the timer and Pomodoro reaction bundle now."
 			)
 		}
 	]
@@ -218,10 +225,17 @@ func build_focus_session_request_options() -> Dictionary:
 		"type": "object",
 		"additionalProperties": false,
 		"properties": {
+			"start": dialogue_schema.duplicate(true),
+			"halfway": dialogue_schema.duplicate(true),
+			"ending": dialogue_schema.duplicate(true),
 			"pause": dialogue_schema.duplicate(true),
 			"resume": dialogue_schema.duplicate(true),
 			"stop": dialogue_schema.duplicate(true),
-			"end": dialogue_schema.duplicate(true)
+			"end": dialogue_schema.duplicate(true),
+			"break_prompt": dialogue_schema.duplicate(true),
+			"break_start": dialogue_schema.duplicate(true),
+			"break_end": dialogue_schema.duplicate(true),
+			"cycle_end": dialogue_schema.duplicate(true)
 		},
 		"required": FOCUS_EVENT_KEYS
 	}
@@ -283,15 +297,22 @@ func build_focus_session_prompt(
 		+ "Planned timer length: "
 		+ str(planned_minutes)
 		+ " minutes.\n\n"
-		+ "Pre-generate four short in-character reactions for possible future "
+		+ "Pre-generate eleven short in-character reactions for possible future "
 		+ "timer actions. Do not speak as though those future actions have "
 		+ "already happened while generating them.\n\n"
+		+ "start: what the character says when focus begins.\n"
+		+ "halfway: a brief reaction when half the focus time remains.\n"
+		+ "ending: a brief reaction when five minutes remain.\n"
 		+ "pause: what the character says if the user pauses this timer.\n"
 		+ "resume: what the character says if the user resumes this timer.\n"
 		+ "stop: what the character says if the user stops/resets this timer "
 		+ "before it naturally reaches zero.\n"
 		+ "end: what the character says if this timer naturally reaches zero. "
 		+ "The timer ending does not prove the task itself was completed.\n\n"
+		+ "break_prompt: ask whether the user will take the prepared Pomodoro break.\n"
+		+ "break_start: what the character says when a Pomodoro break begins.\n"
+		+ "break_end: what the character says when a Pomodoro break ends.\n"
+		+ "cycle_end: what the character says after the long break completes a full cycle.\n\n"
 		+ "Each reaction should normally be one sentence and never more than "
 		+ "two short sentences. These are character reactions, not productivity "
 		+ "coaching. If it fits the character, they may tease the user, sound "
@@ -310,10 +331,17 @@ func build_focus_session_prompt(
 		+ "only allowed mood names.\n"
 		+ "Return JSON only in this exact structure:\n"
 		+ "{"
+		+ "\"start\":{\"text\":\"...\",\"mood\":\"neutral\"},"
+		+ "\"halfway\":{\"text\":\"...\",\"mood\":\"neutral\"},"
+		+ "\"ending\":{\"text\":\"...\",\"mood\":\"neutral\"},"
 		+ "\"pause\":{\"text\":\"...\",\"mood\":\"neutral\"},"
 		+ "\"resume\":{\"text\":\"...\",\"mood\":\"neutral\"},"
 		+ "\"stop\":{\"text\":\"...\",\"mood\":\"neutral\"},"
-		+ "\"end\":{\"text\":\"...\",\"mood\":\"neutral\"}"
+		+ "\"end\":{\"text\":\"...\",\"mood\":\"neutral\"},"
+		+ "\"break_prompt\":{\"text\":\"...\",\"mood\":\"neutral\"},"
+		+ "\"break_start\":{\"text\":\"...\",\"mood\":\"neutral\"},"
+		+ "\"break_end\":{\"text\":\"...\",\"mood\":\"neutral\"},"
+		+ "\"cycle_end\":{\"text\":\"...\",\"mood\":\"neutral\"}"
 		+ "}"
 	)
 
@@ -719,6 +747,30 @@ func get_focus_session_fallback_bundle(
 	)
 
 	return {
+		"start": {
+			"text": _build_specific_fallback(
+				fallback_dialogue, "timer_start", clean_task_name,
+				planned_minutes,
+				("집중 시작." if _dialogue_is_korean() else "Focus starts now.")
+			),
+			"mood": DEFAULT_MOOD
+		},
+		"halfway": {
+			"text": _build_specific_fallback(
+				fallback_dialogue, "timer_halfway", clean_task_name,
+				planned_minutes,
+				("절반 남았어." if _dialogue_is_korean() else "Halfway there.")
+			),
+			"mood": DEFAULT_MOOD
+		},
+		"ending": {
+			"text": _build_specific_fallback(
+				fallback_dialogue, "timer_ending", clean_task_name,
+				planned_minutes,
+				("5분 남았어." if _dialogue_is_korean() else "Five minutes left.")
+			),
+			"mood": DEFAULT_MOOD
+		},
 		"pause": {
 			"text": _build_specific_fallback(
 				fallback_dialogue,
@@ -756,6 +808,38 @@ func get_focus_session_fallback_bundle(
 				clean_task_name,
 				planned_minutes,
 				end_default
+			),
+			"mood": DEFAULT_MOOD
+		},
+		"break_prompt": {
+			"text": _build_specific_fallback(
+				fallback_dialogue, "pomodoro_break_prompt", clean_task_name,
+				planned_minutes,
+				("휴식할 거야?" if _dialogue_is_korean() else "Will you take the break?")
+			),
+			"mood": DEFAULT_MOOD
+		},
+		"break_start": {
+			"text": _build_specific_fallback(
+				fallback_dialogue, "pomodoro_break_start", clean_task_name,
+				planned_minutes,
+				("이제 잠깐 쉬어." if _dialogue_is_korean() else "Take a short break.")
+			),
+			"mood": DEFAULT_MOOD
+		},
+		"break_end": {
+			"text": _build_specific_fallback(
+				fallback_dialogue, "pomodoro_break_complete", clean_task_name,
+				planned_minutes,
+				("휴식 끝." if _dialogue_is_korean() else "Break is over.")
+			),
+			"mood": DEFAULT_MOOD
+		},
+		"cycle_end": {
+			"text": _build_specific_fallback(
+				fallback_dialogue, "pomodoro_cycle_complete", clean_task_name,
+				planned_minutes,
+				("한 사이클 끝났네." if _dialogue_is_korean() else "That completes a full cycle.")
 			),
 			"mood": DEFAULT_MOOD
 		}

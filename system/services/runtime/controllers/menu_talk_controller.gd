@@ -46,7 +46,6 @@ func refresh_cast() -> void:
 	var valid_prefixes: Array[String] = []
 	for character_id: String in active_ids:
 		valid_prefixes.append(character_id + "|")
-		ensure_prefetch(character_id)
 	for key_value: Variant in generated_pools.keys():
 		var key: String = str(key_value)
 		var keep: bool = false

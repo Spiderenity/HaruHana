@@ -146,10 +146,17 @@ const UI_KO: Dictionary = {
 	"New pack": "새 팩",
 	"First boot": "첫 부팅",
 	"Idle": "대기",
+	"Timer start": "타이머 시작",
+	"Timer halfway": "타이머 절반",
+	"Timer ending": "타이머 5분 전",
 	"Timer complete": "타이머 완료",
 	"Timer pause": "타이머 일시정지",
 	"Timer resume": "타이머 재개",
 	"Timer stop": "타이머 중단",
+	"Pomodoro break prompt": "뽀모도로 휴식 질문",
+	"Pomodoro break start": "뽀모도로 휴식 시작",
+	"Pomodoro break complete": "뽀모도로 휴식 완료",
+	"Pomodoro cycle complete": "뽀모도로 사이클 완료",
 	"Desktop leave": "데스크톱 떠남",
 	"Desktop arrive": "데스크톱 도착",
 	"Boot primary": "부팅 기본",
@@ -684,6 +691,12 @@ func _line_group_label(group_id: String) -> String:
 			return _l("First boot")
 		"idle":
 			return _l("Idle")
+		"timer_start":
+			return _l("Timer start")
+		"timer_halfway":
+			return _l("Timer halfway")
+		"timer_ending":
+			return _l("Timer ending")
 		"timer_complete":
 			return _l("Timer complete")
 		"timer_pause":
@@ -692,6 +705,14 @@ func _line_group_label(group_id: String) -> String:
 			return _l("Timer resume")
 		"timer_stop":
 			return _l("Timer stop")
+		"pomodoro_break_prompt":
+			return _l("Pomodoro break prompt")
+		"pomodoro_break_start":
+			return _l("Pomodoro break start")
+		"pomodoro_break_complete":
+			return _l("Pomodoro break complete")
+		"pomodoro_cycle_complete":
+			return _l("Pomodoro cycle complete")
 		"desktop_leave":
 			return _l("Desktop leave")
 		"desktop_arrive":
@@ -1809,7 +1830,7 @@ func _toolbar_button(text: String, callback: Callable) -> Button:
 	button.pressed.connect(callback)
 	return button
 
-func _page_heading(title_text: String, subtitle_text: String) -> Control:
+func _page_heading(title_text: String, _subtitle_text: String) -> Control:
 	var box: VBoxContainer = VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 2)
@@ -1820,7 +1841,9 @@ func _page_heading(title_text: String, subtitle_text: String) -> Control:
 	box.add_child(title)
 
 	var subtitle: Label = Label.new()
-	_bind_localized_property(subtitle, "text", subtitle_text)
+	_bind_localized_property(
+		subtitle, "text", str(UI_KO.get(title_text, title_text)), title_text
+	)
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	subtitle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	subtitle.add_theme_font_size_override("font_size", CreatorThemeScript.FONT_SMALL)

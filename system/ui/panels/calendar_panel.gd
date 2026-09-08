@@ -242,19 +242,27 @@ func reload_schedules() -> void:
 		ScheduleStoreScript.save_schedules(schedules)
 
 func create_interface() -> void:
+	var top_region := VBoxContainer.new()
+	top_region.custom_minimum_size.y = AppearanceSettingsScript.UI_CARD_TOP_REGION_HEIGHT
+	top_region.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top_region.add_theme_constant_override(
+		"separation", AppearanceSettingsScript.UI_STACK_GAP
+	)
+	add_child(top_region)
+
 	var heading := Label.new()
 	_bind_localized_text(heading, "Calendar", "캘린더")
 	heading.add_theme_font_size_override(
 		"font_size",
 		AppearanceSettingsScript.UI_FONT_LARGE
 	)
-	add_child(heading)
+	top_region.add_child(heading)
 
 	var explanation := Label.new()
 	_bind_localized_text(
 		explanation,
-		"Create one-time, weekly, or yearly schedules. When a reminder is due, one desktop pet will tell you.",
-		"한 번만 또는 매주·매년 반복할 일정을 등록하세요. 알림 시간이 되면 데스크탑 펫이 알려줍니다."
+		"캘린더",
+		"Calendar"
 	)
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	explanation.add_theme_font_size_override(
@@ -262,12 +270,12 @@ func create_interface() -> void:
 		AppearanceSettingsScript.UI_FONT_SMALL
 	)
 	explanation.remove_theme_color_override("font_color")
-	add_child(explanation)
-	add_child(HSeparator.new())
+	top_region.add_child(explanation)
+	top_region.add_child(HSeparator.new())
 
 	var month_block := VBoxContainer.new()
 	month_block.add_theme_constant_override("separation", SPACE_SM)
-	add_child(month_block)
+	top_region.add_child(month_block)
 	create_month_header(month_block)
 	create_calendar_grid(month_block)
 
@@ -765,15 +773,7 @@ func record_focus_session(planned_minutes: int) -> void:
 
 func _load_focus_history() -> void:
 	productive_dates.clear()
-	if not FileAccess.file_exists(FOCUS_HISTORY_PATH):
-		return
-	var file: FileAccess = FileAccess.open(FOCUS_HISTORY_PATH, FileAccess.READ)
-	if file == null:
-		return
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	file.close()
-	if not (parsed is Dictionary):
-		return
+	var parsed: Dictionary = JsonStore.load_dictionary(FOCUS_HISTORY_PATH, {})
 	for key_value: Variant in (parsed as Dictionary).keys():
 		var key: String = str(key_value).strip_edges()
 		var minutes: int = int((parsed as Dictionary).get(key_value, 0))
@@ -781,14 +781,9 @@ func _load_focus_history() -> void:
 			productive_dates[key] = minutes
 
 func _save_focus_history() -> void:
-	DirAccess.make_dir_recursive_absolute(
-		ProjectSettings.globalize_path(FOCUS_HISTORY_DIRECTORY)
-	)
-	var file: FileAccess = FileAccess.open(FOCUS_HISTORY_PATH, FileAccess.WRITE)
-	if file == null:
-		return
-	file.store_string(JSON.stringify(productive_dates, "\t"))
-	file.close()
+	var error := JsonStore.save_json(FOCUS_HISTORY_PATH, productive_dates)
+	if error != OK:
+		OS.alert("집중 기록을 저장하지 못했습니다. / Could not save focus history.", "HaruHana")
 
 func _discard_legacy_weekly_records() -> void:
 	if FileAccess.file_exists(LEGACY_WEEKLY_PATH):
@@ -819,8 +814,6 @@ func apply_appearance() -> void:
 	for check: Button in weekday_checks:
 		if is_instance_valid(check):
 			_style_weekday_toggle(check)
-	if yearly_check != null:
-		_style_weekday_toggle(yearly_check)
 	if save_button != null:
 		_style_primary_button(save_button)
 	if toolbar_add_button != null:

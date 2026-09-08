@@ -3,6 +3,8 @@ class_name AppLanguage
 
 const SETTINGS_PATH: String = "user://settings/interface.json"
 const DEFAULT_LANGUAGE: String = "ko"
+static var _cached_language := ""
+static var _cache_checked_msec := -2000
 const SUPPORTED_LANGUAGES: Array[String] = [
 	"en",
 	"ko",
@@ -37,6 +39,10 @@ static func normalize_language(
 	return language
 
 static func get_language() -> String:
+	var now := Time.get_ticks_msec()
+	if not _cached_language.is_empty() and now - _cache_checked_msec < 1000:
+		return _cached_language
+	_cache_checked_msec = now
 	var settings: Dictionary = JsonStore.load_dictionary(
 		SETTINGS_PATH,
 		{"language": DEFAULT_LANGUAGE}
@@ -45,8 +51,9 @@ static func get_language() -> String:
 		str(settings.get("language", DEFAULT_LANGUAGE))
 	)
 	if not SUPPORTED_LANGUAGES.has(language):
-		return DEFAULT_LANGUAGE
-	return language
+		language = DEFAULT_LANGUAGE
+	_cached_language = language
+	return _cached_language
 
 static func set_language(
 	language: String
@@ -54,10 +61,14 @@ static func set_language(
 	language = normalize_language(language)
 	if not SUPPORTED_LANGUAGES.has(language):
 		return ERR_INVALID_PARAMETER
-	return JsonStore.save_json(
+	var error := JsonStore.save_json(
 		SETTINGS_PATH,
 		{"language": language}
 	)
+	if error == OK:
+		_cached_language = language
+		_cache_checked_msec = Time.get_ticks_msec()
+	return error
 
 static func text(
 	english: String,

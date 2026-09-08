@@ -24,6 +24,7 @@ const UI_INPUT_VERTICAL_PADDING: float = 7.0
 const UI_STACK_GAP: int = 10
 const UI_COMPACT_GAP: int = 8
 const UI_TAB_MARGIN_BOTTOM: int = 8
+const UI_CARD_TOP_REGION_HEIGHT: float = 432.0
 
 const SETTINGS_PATH: String = "user://settings/appearance.json"
 
@@ -749,7 +750,7 @@ static func _apply_colors(
 
 	for theme_type: String in ["LineEdit", "TextEdit"]:
 		theme.set_color("font_placeholder_color", theme_type, muted)
-		theme.set_color("font_uneditable_color", theme_type, text)
+		theme.set_color("font_uneditable_color", theme_type, muted)
 		theme.set_color("font_selected_color", theme_type, text)
 		theme.set_color("selection_color", theme_type, selection)
 		theme.set_color("caret_color", theme_type, accent)
@@ -783,7 +784,6 @@ static func _apply_styleboxes(
 	var accent: Color = palette["accent"]
 	var selection: Color = palette["selection"]
 	var border_light: Color = secondary
-	var border_heavy: Color = accent
 	var scrollbar_color: Color = palette.get("scrollbar", secondary)
 	var scroll_hover_color: Color = palette.get("scroll_hover", muted)
 
@@ -824,7 +824,7 @@ static func _apply_styleboxes(
 	theme.set_stylebox(
 		"focus",
 		"OptionButton",
-		_make_box(Color(0, 0, 0, 0), border_heavy, 9, 1.0)
+		StyleBoxEmpty.new()
 	)
 	theme.set_stylebox(
 		"disabled",
@@ -857,7 +857,7 @@ static func _apply_styleboxes(
 		theme.set_stylebox(
 			"focus",
 			theme_type,
-			_make_box(surface, border_heavy, 8, 1.0)
+			StyleBoxEmpty.new()
 		)
 		theme.set_stylebox(
 			"read_only",
@@ -908,7 +908,7 @@ static func _apply_styleboxes(
 		theme.set_stylebox(
 			"focus",
 			theme_type,
-			_make_box(Color(0, 0, 0, 0), accent, 10, 1.0)
+			StyleBoxEmpty.new()
 		)
 		theme.set_stylebox(
 			"selected",

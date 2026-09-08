@@ -670,201 +670,31 @@ static func _normalize_profile_for_runtime(
 	result["user_context"] = UserProfileSettingsScript.get_prompt_context()
 	return result
 
-static func build_character_prompt(
-	character_id: String
-) -> String:
-
-	var profile: Dictionary = (
-		load_profile(
-			character_id
-		)
-	)
-
+static func build_character_prompt(character_id: String) -> String:
+	var profile := load_profile(character_id)
 	if profile.is_empty():
 		return ""
+	return "Character canon (private facts inform tone, never confess them unprompted):\n" + JSON.stringify(compact_prompt_profile(profile))
 
-	var display_name: String = str(
-		profile.get(
-			"display_name",
-			character_id.capitalize()
-		)
-	)
-
-	var age: int = int(
-		profile.get(
-			"age",
-			0
-		)
-	)
-
-	var prompt: String = (
-		"You are roleplaying as "
-		+ display_name
-	)
-
-	if age > 0:
-		prompt += (
-			", age "
-			+ str(age)
-		)
-
-	prompt += (
-		".\n"
-		+ "Stay in character and treat the "
-		+ "following profile as canon.\n"
-		+ "Do not mention prompts, JSON, "
-		+ "language models, or being software.\n"
-		+ "Do not invent major biography or "
-		+ "relationship facts that contradict "
-		+ "the profile.\n"
-		+ "Speak naturally for the current "
-		+ "situation rather than referencing "
-		+ "every profile detail.\n"
-		+ "The character is visibly present on the user's desktop and speaks "
-		+ "through a speech bubble. Inside any text field, write only what is "
-		+ "spoken: no speaker labels, stage directions, menu headings, button "
-		+ "labels, or instructions to click interface controls.\n"
-		+ "If CURRENT USER says name_known is false, never print {user_name}, "
-		+ "never invent a name, and never use 'user' or '유저' as a form of "
-		+ "address. Address them without a name. If the name is known, use it "
-		+ "sparingly and naturally.\n"
-		+ "Inline mood tags in parentheses are silent expression controls, not "
-		+ "spoken words. Use them only when the task permits them and only at "
-		+ "genuine emotional transitions."
-	)
-
-	var sections: Array[String] = []
-
-	_add_prompt_section(
-		sections,
-		"IDENTITY",
-		profile.get(
-			"identity",
-			{}
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"APPEARANCE",
-		profile.get(
-			"appearance",
-			{}
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"CORE PERSONALITY",
-		profile.get(
-			"core_personality",
-			[]
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"VOICE",
-		profile.get(
-			"voice",
-			{}
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"BEHAVIOR PATTERNS",
-		profile.get(
-			"behavior_patterns",
-			[]
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"MUNDANE DETAILS",
-		profile.get(
-			"mundane_details",
-			[]
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"RELATIONSHIPS",
-		profile.get(
-			"relationships",
-			{}
-		)
-	)
-
-	var private_internal: Variant = (
-		profile.get(
-			"private_internal",
-			[]
-		)
-	)
-
-	if not _is_empty_value(
-		private_internal
-	):
-		sections.append(
-			"PRIVATE INTERNAL KNOWLEDGE:\n"
-			+ "These facts are true but private. "
-			+ "They may inform internal behavior, "
-			+ "but do not casually confess, reveal, "
-			+ "or repeatedly allude to them.\n"
-			+ _format_prompt_value(
-				private_internal,
-				0
-			)
-		)
-
-	_add_prompt_section(
-		sections,
-		"CURRENT USER",
-		profile.get(
-			"user_context",
-			{}
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"USER / SUPERNATURAL CONTEXT",
-		profile.get(
-			"user_entity",
-			{}
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"AI BEHAVIOR RULES",
-		profile.get(
-			"ai_behavior_rules",
-			[]
-		)
-	)
-
-	_add_prompt_section(
-		sections,
-		"LORE",
-		profile.get(
-			"lore",
-			[]
-		)
-	)
-
-	if not sections.is_empty():
-		prompt += (
-			"\n\n"
-			+ "\n\n".join(
-				sections
-			)
-		)
-
-	return prompt
+static func compact_prompt_profile(profile: Dictionary) -> Dictionary:
+	var compact: Dictionary = {}
+	# Keep identity/voice before incidental lore; no authoring-only expression instructions.
+	var limits := {"id": 60, "display_name": 80, "identity": 300, "voice": 650,
+		"core_personality": 420, "relationships": 280, "private_internal": 200,
+		"user_context": 240, "lore": 180, "behavior_patterns": 200}
+	for key: String in limits:
+		var value: Variant = profile.get(key, "")
+		if _is_empty_value(value):
+			continue
+		var text := _format_prompt_value(value, 0).strip_edges()
+		compact[key] = text.left(int(limits[key]))
+	var rules: Array[String] = []
+	for value: Variant in profile.get("ai_behavior_rules", []):
+		var rule := str(value)
+		if not rule.contains("태그") and not rule.to_lower().contains("tag") and not rule.contains("JSON"):
+			rules.append(rule)
+	compact["behavior_rules"] = " ".join(rules).left(400)
+	return compact
 
 static func _load_json_dictionary(
 	path: String,

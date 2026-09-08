@@ -162,7 +162,7 @@ Required group IDs:
 Recommended amounts:
 - first_boot: 5-7 lines. First-boot dialogue is authored per character, but when multiple new characters boot together the runtime alternates one line per character in round-robin order. Write each line so it still reads naturally with another character speaking between this character's lines; do not assume this character speaks all of its first_boot lines consecutively.
 - idle: 5 lines
-- timer groups: 3 lines each. timer_complete reacts only after a timer naturally reaches zero; timer_pause, timer_resume, and timer_stop react only to those exact user actions.
+- timer and Pomodoro groups: 3 lines each. timer_complete reacts only after focus naturally reaches zero; timer_start, timer_halfway, and timer_ending match their exact milestones. pomodoro_break_prompt asks whether the user will take the prepared break. Other Pomodoro groups describe their transitions without claiming the task itself is complete.
 - desktop_leave / desktop_arrive: 2 lines each, reacting to a character leaving or returning rather than the user leaving the computer.
 - boot_primary: 2 lines for the first character shown at startup.
 - boot_arrival / boot_peer: 1-2 lines for a later character arriving and an already-present peer reacting.

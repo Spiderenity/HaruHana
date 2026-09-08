@@ -168,15 +168,24 @@ func _l(english: String) -> String:
 
 func _apply_language(node: Node) -> void:
 	if node is Label or node is Button or node is LineEdit or node is TextEdit:
-		var current := str(node.get("text"))
-		for english: String in KO:
-			if current == english or current == str(KO[english]):
-				node.set("text", _l(english))
-				break
+		if node.has_meta("opposite_language_title"):
+			var title_key := str(node.get_meta("opposite_language_title"))
+			node.set("text", _opposite_language_title(title_key))
+		else:
+			var current := str(node.get("text"))
+			for english: String in KO:
+				if current == english or current == str(KO[english]):
+					node.set("text", _l(english))
+					break
 	for child: Node in node.get_children():
 		_apply_language(child)
 	if node == self:
 		_summary()
+
+func _opposite_language_title(english: String) -> String:
+	if AppLanguageScript.get_language() == "ko":
+		return english
+	return str(KO.get(english, english))
 
 func _apply_theme(node: Node) -> void:
 	if node is ColorRect:
@@ -626,11 +635,11 @@ func _save_page() -> Control:
 	root.add_child(actions)
 	return root
 
-func _page(title: String, subtitle: String) -> VBoxContainer:
+func _page(title: String, _subtitle: String) -> VBoxContainer:
 	var root := VBoxContainer.new()
 	root.name = title
 	root.add_theme_constant_override("separation", 12)
-	root.add_child(_heading(title, subtitle))
+	root.add_child(_heading(title, ""))
 	root.add_child(HSeparator.new())
 	return root
 
@@ -642,7 +651,11 @@ func _heading(title_text: String, subtitle_text: String) -> Control:
 	title.add_theme_font_size_override("font_size", ThemeKit.FONT_LARGE)
 	box.add_child(title)
 	var subtitle := Label.new()
-	subtitle.text = subtitle_text
+	if subtitle_text.is_empty():
+		subtitle.set_meta("opposite_language_title", title_text)
+		subtitle.text = _opposite_language_title(title_text)
+	else:
+		subtitle.text = subtitle_text
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	subtitle.add_theme_font_size_override("font_size", ThemeKit.FONT_SMALL)
 	subtitle.add_theme_color_override("font_color", ThemeKit.muted())
@@ -1156,37 +1169,37 @@ func _save() -> void:
 		status.text = "Enter a valid name and provide all required PNGs."
 		return
 	var target := AppearanceSettingsScript.get_user_bubble_directory_path().path_join(id)
-	var error := DirAccess.make_dir_recursive_absolute(target)
-	if error != OK and error != ERR_ALREADY_EXISTS:
-		status.text = "Could not create " + target
+	var stage := PackageSave.begin(target)
+	if stage.is_empty():
+		status.text = _l("Could not prepare save. Existing files are unchanged.")
 		return
+	var error := _write_bubble_stage(stage)
+	if error != OK:
+		PackageSave.discard(stage)
+		status.text = _l("Could not save bubble. Existing files are unchanged.")
+		return
+	error = PackageSave.commit(stage, target)
+	status.text = ("Saved bubble skin to " + target) if error == OK else "Could not replace bubble files."
+
+func _write_bubble_stage(target: String) -> Error:
 	var save_parts: Array[String] = PARTS.duplicate()
 	if _advanced_mode():
 		save_parts.append_array(MENU_PARTS)
 	for part: String in save_parts:
-		var source := str(paths[part])
-		var bytes: PackedByteArray = _get_png_bytes(source)
+		var bytes := _get_png_bytes(str(paths[part]))
 		if bytes.is_empty():
-			status.text = "Could not read " + part + ".png"
-			return
-		var output := FileAccess.open(target.path_join(part + ".png"), FileAccess.WRITE)
-		if output == null:
-			status.text = "Could not write " + part + ".png"
-			return
-		output.store_buffer(bytes)
-		output.close()
+			return ERR_FILE_CANT_READ
+		var error := AtomicFile.save_bytes(target.path_join(part + ".png"), bytes, false)
+		if error != OK:
+			return error
 	if not _advanced_mode():
 		for part: String in MENU_PARTS:
-			var old_menu_file := target.path_join(part + ".png")
-			if FileAccess.file_exists(old_menu_file):
-				DirAccess.remove_absolute(old_menu_file)
-	var config := FileAccess.open(target.path_join("bubble.json"), FileAccess.WRITE)
-	if config == null:
-		status.text = "Could not write bubble.json"
-		return
-	config.store_string(JSON.stringify({"text_color": _hex()}, "  ") + "\n")
-	config.close()
-	status.text = "Saved bubble skin to " + target
+			var path := target.path_join(part + ".png")
+			if FileAccess.file_exists(path):
+				var error := DirAccess.remove_absolute(path)
+				if error != OK:
+					return error
+	return JsonStore.save_json(target.path_join("bubble.json"), {"text_color": _hex()}, "  ", true, false)
 
 
 func _get_png_bytes(path: String) -> PackedByteArray:

@@ -32,6 +32,29 @@ signal focus_timer_updated(
 	paused: bool
 )
 
+signal focus_session_milestone(
+	event_key: String,
+	task_name: String,
+	planned_minutes: int
+)
+
+signal pomodoro_phase_started(
+	phase: String,
+	task_name: String,
+	planned_minutes: int
+)
+
+signal pomodoro_phase_finished(
+	phase: String,
+	task_name: String,
+	planned_minutes: int
+)
+
+signal pomodoro_break_prompted(
+	task_name: String,
+	planned_minutes: int
+)
+
 signal chat_exchange_completed(
 	character_id: String,
 	user_message: String,
@@ -55,31 +78,11 @@ const MIN_BOARD_SIZE := Vector2i(
 	600
 )
 
-const MEMO_PATH: String = "user://companion_memo.txt"
-const MEMO_AUTOSAVE_SECONDS: float = 0.6
 const LANGUAGE_REFRESH_INTERVAL_SECONDS: float = 0.5
 
 const TAB_ROOT_RIGHT_MARGIN: int = 0
 const TAB_SCROLLBAR_WIDTH: float = 6.0
 const TAB_SCROLLBAR_CONTENT_GAP: int = 12
-
-const MEMO_PROMPTS_EN: Array[String] = [
-	"One small note is enough for now.",
-	"Put it here so your head does not have to hold it.",
-	"You can come back to this when you are ready.",
-	"A messy note is still a useful note.",
-	"Write down the next tiny thing, not the whole plan.",
-	"Leave yourself something kind to find later."
-]
-
-const MEMO_PROMPTS_KO: Array[String] = [
-	"지금은 한 줄만 적어도 충분해요.",
-	"머릿속에 들고 있지 말고 여기 내려놓아요.",
-	"준비됐을 때 다시 돌아와도 돼요.",
-	"정리되지 않은 메모도 충분히 쓸모 있어요.",
-	"전체 계획 말고 다음 작은 것 하나만 적어봐요.",
-	"나중의 내가 보면 조금 기분 좋아질 말을 남겨봐요."
-]
 
 const ChatPanelScript = preload(
 	"res://system/ui/panels/chat_panel.gd"
@@ -91,6 +94,10 @@ const FocusTimerPanelScript = preload(
 
 const CalendarPanelScript = preload(
 	"res://system/ui/panels/calendar_panel.gd"
+)
+
+const MemoPanelScript = preload(
+	"res://system/ui/panels/memo_panel.gd"
 )
 
 const SettingsPanelScript = preload(
@@ -112,6 +119,7 @@ const AppearanceSettingsScript = preload(
 var chat_panel: CompanionChatPanel = null
 var focus_timer_panel: FocusTimerPanel = null
 var calendar_panel: CalendarPanel = null
+var memo_panel: CompanionMemoPanel = null
 var settings_panel: CompanionSettingsPanel = null
 var interface_panel: PanelContainer = null
 var content_surface_panel: PanelContainer = null
@@ -119,12 +127,6 @@ var navigation_separator: ColorRect = null
 var board_title_label: Label = null
 var board_subtitle_prefix: Label = null
 var board_settings_trigger: Label = null
-
-var memo_edit: TextEdit = null
-var memo_title_label: Label = null
-var memo_prompt_label: Label = null
-var memo_status_label: Label = null
-var memo_save_timer: Timer = null
 
 var tabs: TabContainer = null
 var index_tab_rail: VBoxContainer = null
@@ -245,6 +247,8 @@ func _apply_appearance(force: bool) -> void:
 		chat_panel.apply_appearance()
 	if focus_timer_panel != null and is_instance_valid(focus_timer_panel):
 		focus_timer_panel.apply_appearance()
+	if memo_panel != null and is_instance_valid(memo_panel):
+		memo_panel.apply_appearance()
 	if settings_panel != null and is_instance_valid(settings_panel):
 		settings_panel.apply_appearance()
 	call_deferred("_apply_calendar_appearance")
@@ -459,7 +463,6 @@ func _on_tab_changed(tab_index: int) -> void:
 	if tab_index != debug_tab_index:
 		last_non_debug_tab_index = tab_index
 	_sync_index_tab_buttons()
-	_refresh_memo_prompt()
 
 func _sync_index_tab_buttons() -> void:
 	if tabs == null:
@@ -954,7 +957,18 @@ func create_timer_tab(
 	focus_timer_panel.session_time_updated.connect(
 		_on_focus_timer_updated
 	)
-
+	focus_timer_panel.session_milestone.connect(
+		_on_focus_session_milestone
+	)
+	focus_timer_panel.pomodoro_phase_started.connect(
+		_on_pomodoro_phase_started
+	)
+	focus_timer_panel.pomodoro_phase_finished.connect(
+		_on_pomodoro_phase_finished
+	)
+	focus_timer_panel.pomodoro_break_prompted.connect(
+		_on_pomodoro_break_prompted
+	)
 func create_calendar_tab(
 	target_tabs: TabContainer
 ) -> void:
@@ -994,148 +1008,8 @@ func _apply_calendar_appearance() -> void:
 func create_memo_tab(
 	target_tabs: TabContainer
 ) -> void:
-	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", AppearanceSettingsScript.UI_STACK_GAP)
-
-	memo_title_label = Label.new()
-	memo_title_label.text = _l("Memo", "메모")
-	memo_title_label.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_LARGE)
-	content.add_child(memo_title_label)
-
-	memo_prompt_label = Label.new()
-	memo_prompt_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	memo_prompt_label.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_SMALL)
-	content.add_child(memo_prompt_label)
-	_refresh_memo_prompt()
-
-	content.add_child(HSeparator.new())
-
-	memo_edit = TextEdit.new()
-	memo_edit.placeholder_text = _l(
-		"Write anything you want to keep here...",
-		"기억해두고 싶은 걸 편하게 적어두세요..."
-	)
-	memo_edit.custom_minimum_size = Vector2(0.0, 0.0)
-	memo_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	memo_edit.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	memo_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	content.add_child(memo_edit)
-
-	memo_status_label = Label.new()
-	memo_status_label.visible = false
-
-	memo_save_timer = Timer.new()
-	memo_save_timer.one_shot = true
-	memo_save_timer.wait_time = MEMO_AUTOSAVE_SECONDS
-	add_child(memo_save_timer)
-	memo_save_timer.timeout.connect(_save_memo)
-
-	_load_memo()
-	memo_edit.text_changed.connect(_on_memo_text_changed)
-
-	add_direct_tab(target_tabs, "Memo", content)
-
-func _refresh_memo_prompt() -> void:
-	if memo_prompt_label == null:
-		return
-
-	var today: Dictionary = Time.get_datetime_dict_from_system()
-	var year: int = int(today.get("year", 1970))
-	var month: int = int(today.get("month", 1))
-	var day: int = int(today.get("day", 1))
-	var weekday: int = int(today.get("weekday", 0))
-
-	if AppLanguageScript.get_language() == "ko":
-		var weekdays_ko: Array[String] = [
-			"일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"
-		]
-		memo_prompt_label.text = (
-			str(year) + "년 " + str(month) + "월 " + str(day) + "일 "
-			+ weekdays_ko[clampi(weekday, 0, 6)]
-		)
-	else:
-		var months_en: Array[String] = [
-			"January", "February", "March", "April", "May", "June",
-			"July", "August", "September", "October", "November", "December"
-		]
-		var weekdays_en: Array[String] = [
-			"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
-		]
-		memo_prompt_label.text = (
-			weekdays_en[clampi(weekday, 0, 6)] + ", "
-			+ months_en[clampi(month - 1, 0, 11)] + " "
-			+ str(day) + ", " + str(year)
-		)
-
-func _load_memo() -> void:
-	if memo_edit == null:
-		return
-
-	if not FileAccess.file_exists(
-		MEMO_PATH
-	):
-		return
-
-	var file: FileAccess = (
-		FileAccess.open(
-			MEMO_PATH,
-			FileAccess.READ
-		)
-	)
-
-	if file == null:
-		return
-
-	memo_edit.text = file.get_as_text()
-
-	file.close()
-
-func _on_memo_text_changed() -> void:
-	if memo_status_label != null:
-		memo_status_label.text = AppLanguageScript.text(
-			"Saving...",
-			"저장 중..."
-		)
-
-	if memo_save_timer == null:
-		_save_memo()
-		return
-
-	memo_save_timer.start(
-		MEMO_AUTOSAVE_SECONDS
-	)
-
-func _save_memo() -> void:
-	if memo_edit == null:
-		return
-
-	var file: FileAccess = (
-		FileAccess.open(
-			MEMO_PATH,
-			FileAccess.WRITE
-		)
-	)
-
-	if file == null:
-		if memo_status_label != null:
-			memo_status_label.text = AppLanguageScript.text(
-				"Could not save memo.",
-				"메모를 저장하지 못했습니다."
-			)
-
-		return
-
-	file.store_string(
-		memo_edit.text
-	)
-
-	file.close()
-
-	if memo_status_label != null:
-		memo_status_label.text = AppLanguageScript.text(
-			"Saved.",
-			"저장됨."
-		)
+	memo_panel = MemoPanelScript.new()
+	add_direct_tab(target_tabs, "Memo", memo_panel)
 
 func create_settings_tab(
 	target_tabs: TabContainer
@@ -1189,6 +1063,8 @@ func _apply_interface_language(
 		calendar_panel.apply_language()
 	if settings_panel != null and is_instance_valid(settings_panel):
 		settings_panel.apply_language()
+	if memo_panel != null and is_instance_valid(memo_panel):
+		memo_panel.apply_language()
 
 	title = _l(
 		"Desktop Pet Board",
@@ -1205,14 +1081,6 @@ func _apply_interface_language(
 		board_settings_trigger.text = _l("settings.", "설정.")
 
 	_refresh_tab_titles()
-	if memo_title_label != null:
-		memo_title_label.text = _l("Memo", "메모")
-	_refresh_memo_prompt()
-	if memo_edit != null:
-		memo_edit.placeholder_text = _l(
-			"Write anything you want to keep here...",
-			"기억해두고 싶은 걸 편하게 적어두세요..."
-		)
 
 func create_debug_tab(
 	target_tabs: TabContainer
@@ -1304,6 +1172,33 @@ func _on_focus_timer_updated(
 	paused: bool
 ) -> void:
 	focus_timer_updated.emit(seconds_remaining, active, paused)
+
+func _on_focus_session_milestone(
+	event_key: String,
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	focus_session_milestone.emit(event_key, task_name, planned_minutes)
+
+func _on_pomodoro_phase_started(
+	phase: String,
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	pomodoro_phase_started.emit(phase, task_name, planned_minutes)
+
+func _on_pomodoro_phase_finished(
+	phase: String,
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	pomodoro_phase_finished.emit(phase, task_name, planned_minutes)
+
+func _on_pomodoro_break_prompted(
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	pomodoro_break_prompted.emit(task_name, planned_minutes)
 
 func open_tab(
 	tab_name: String
@@ -1399,21 +1294,13 @@ func center_on_screen() -> void:
 	)
 
 func get_interactive_memo_context(max_characters: int = 600) -> String:
-	if memo_edit == null:
+	if memo_panel == null:
 		return ""
-	var text: String = memo_edit.text.strip_edges()
-	if text.is_empty():
-		return ""
-	var limit: int = maxi(1, max_characters)
-	if text.length() > limit:
-		text = text.substr(0, limit).strip_edges()
-	return text
+	return memo_panel.get_context(max_characters)
 
 func save_memo_now() -> void:
-	if memo_save_timer != null:
-		memo_save_timer.stop()
-
-	_save_memo()
+	if memo_panel != null:
+		memo_panel.save_now()
 
 func _on_close_requested() -> void:
 	save_memo_now()

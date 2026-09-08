@@ -654,7 +654,7 @@ func _build_menu_response_bundle_prompt(request: Dictionary) -> String:
 		+ "- Prefer expressive contrast rather than keeping the same face throughout a multi-beat line.\n\n"
 		+ character_style_guide + "\n"
 		+ "CHARACTER ID:\n" + character_id + "\n\n"
-		+ "PROFILE:\n" + JSON.stringify(profile, "\t") + "\n\n"
+		+ "PROFILE:\n" + JSON.stringify(CharacterProfiles.compact_prompt_profile(profile)) + "\n\n"
 		+ "USER PROFILE:\n" + JSON.stringify(user_context, "\t") + "\n\n"
 		+ "FRIENDSHIP LEVEL: " + str(friendship_level) + "\n"
 		+ "ACHIEVEMENT LEVEL: " + str(achievement_level) + "\n\n"
@@ -798,10 +798,7 @@ func _build_exit_prefetch_prompt(
 			"CHARACTER ID: "
 			+ character_id
 			+ "\nPROFILE DATA:\n"
-			+ JSON.stringify(
-				profile,
-				"\t"
-			)
+			+ JSON.stringify(CharacterProfiles.compact_prompt_profile(profile))
 		)
 
 	if profile_sections.is_empty():
@@ -1010,10 +1007,7 @@ func _build_cast_transition_prompt(
 			"CHARACTER ID: "
 			+ participant_id
 			+ "\nPROFILE DATA:\n"
-			+ JSON.stringify(
-				profile,
-				"\t"
-			)
+			+ JSON.stringify(CharacterProfiles.compact_prompt_profile(profile))
 		)
 
 	var shared_memory: String = (
@@ -2046,15 +2040,9 @@ func _build_play_fluster_banter_prompt(
 		+ peer_id
 		+ " will speak the line you generate now immediately afterward.\n\n"
 		+ "TARGET CHARACTER PROFILE:\n"
-		+ JSON.stringify(
-			target_profile,
-			"\t"
-		)
+		+ JSON.stringify(CharacterProfiles.compact_prompt_profile(target_profile))
 		+ "\n\nPEER CHARACTER PROFILE:\n"
-		+ JSON.stringify(
-			peer_profile,
-			"\t"
-		)
+		+ JSON.stringify(CharacterProfiles.compact_prompt_profile(peer_profile))
 		+ "\n\nPEER FLUSTER REACTION STYLE:\n"
 		+ peer_style
 		+ "\n\nFLUSTER REACTION TONE:\n"
@@ -2256,28 +2244,7 @@ func _build_interactive_question_prompt(request: Dictionary) -> String:
 	)
 
 func _build_compact_event_profile(character_id: String) -> String:
-	var profile: Dictionary = CharacterProfiles.load_profile(character_id)
-	if profile.is_empty():
-		return ""
-	var compact: Dictionary = {}
-	for key: String in [
-		"id",
-		"display_name",
-		"identity",
-		"core_personality",
-		"voice",
-		"behavior_patterns",
-		"relationships",
-		"user_context",
-		"ai_behavior_rules",
-	]:
-		if profile.has(key):
-			compact[key] = profile[key]
-	return (
-		"CHARACTER ID: " + character_id
-		+ "\nCOMPACT PROFILE DATA:\n"
-		+ JSON.stringify(compact)
-	)
+	return CharacterProfiles.build_character_prompt(character_id)
 
 func _normalize_interactive_question(
 	raw: Dictionary,
@@ -3041,7 +3008,7 @@ func _start_request(
 	var messages: Array = [
 		{
 			"role": "system",
-			"content": prompt
+			"content": prompt + "\n" + DialogueOutput.rules(CharacterProfiles.get_pack_output_language(CharacterProfiles.get_current_pack()), true)
 		},
 		{
 			"role": "user",
@@ -3777,4 +3744,8 @@ func _clean_line(
 			+ "..."
 		)
 
+	result = DialogueOutput.clean_text(result, true)
+	var visible := DialogueOutput.clean_text(result)
+	if not DialogueOutput.language_ok(visible, CharacterProfiles.get_pack_output_language(CharacterProfiles.get_current_pack())):
+		return ""
 	return result

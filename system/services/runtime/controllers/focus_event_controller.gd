@@ -17,6 +17,9 @@ var focus_session_serial: int = 0
 var active_focus_session: Dictionary = {}
 var last_focus_activity: Dictionary = {}
 var active_focus_reaction_bundle: Dictionary = {}
+var retained_pomodoro_character_id: String = ""
+var retained_pomodoro_task_name: String = ""
+var retained_pomodoro_reaction_bundle: Dictionary = {}
 
 func configure(
 	manager: DesktopCharacterManager,
@@ -99,6 +102,7 @@ func _on_focus_session_started(
 		clean_task_name,
 		planned_minutes
 	)
+	_queue_focus_timer_reaction("start")
 
 func _on_focus_session_bundle_ready(
 	session_id: int,
@@ -185,6 +189,9 @@ func _on_focus_session_stopped(
 	_queue_focus_timer_reaction(
 		"stop"
 	)
+	retained_pomodoro_character_id = ""
+	retained_pomodoro_task_name = ""
+	retained_pomodoro_reaction_bundle.clear()
 
 	_clear_active_focus_session()
 
@@ -197,10 +204,49 @@ func _on_focus_session_completed(
 	_queue_focus_timer_reaction(
 		"end"
 	)
+	retained_pomodoro_character_id = str(
+		active_focus_session.get("character_id", "")
+	)
+	retained_pomodoro_task_name = str(
+		active_focus_session.get("task_name", task_name)
+	)
+	retained_pomodoro_reaction_bundle = active_focus_reaction_bundle.duplicate(true)
 
 	_record_focus_activity(task_name, planned_minutes, "completed")
 	DesktopCharacterProgress.add_achievement_minutes(planned_minutes)
 	_clear_active_focus_session()
+
+func _on_focus_session_milestone(
+	event_key: String,
+	_task_name: String,
+	_planned_minutes: int
+) -> void:
+	_queue_focus_timer_reaction(event_key)
+
+func _on_pomodoro_phase_started(
+	_phase: String,
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	_queue_retained_pomodoro_reaction("break_start", task_name, planned_minutes)
+
+func _on_pomodoro_break_prompted(
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	_queue_retained_pomodoro_reaction("break_prompt", task_name, planned_minutes)
+
+func _on_pomodoro_phase_finished(
+	phase: String,
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	_queue_retained_pomodoro_reaction("break_end", task_name, planned_minutes)
+	if phase == "long_break":
+		_queue_retained_pomodoro_reaction("cycle_end", task_name, planned_minutes)
+		retained_pomodoro_character_id = ""
+		retained_pomodoro_task_name = ""
+		retained_pomodoro_reaction_bundle.clear()
 
 func _get_timer_reaction_candidates() -> Array[String]:
 	var candidates: Array[String] = []
@@ -220,7 +266,37 @@ func _queue_focus_timer_reaction(
 	).strip_edges().to_lower()
 	if character_id.is_empty():
 		return
-	var dialogue_value: Variant = active_focus_reaction_bundle.get(event_key, {})
+	_queue_reaction_from_bundle(
+		character_id,
+		active_focus_reaction_bundle,
+		event_key,
+		str(active_focus_session.get("task_name", "")),
+		int(active_focus_session.get("planned_minutes", 0))
+	)
+
+func _queue_retained_pomodoro_reaction(
+	event_key: String,
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	if retained_pomodoro_character_id.is_empty():
+		return
+	_queue_reaction_from_bundle(
+		retained_pomodoro_character_id,
+		retained_pomodoro_reaction_bundle,
+		event_key,
+		task_name if not task_name.is_empty() else retained_pomodoro_task_name,
+		planned_minutes
+	)
+
+func _queue_reaction_from_bundle(
+	character_id: String,
+	bundle: Dictionary,
+	event_key: String,
+	task_name: String,
+	planned_minutes: int
+) -> void:
+	var dialogue_value: Variant = bundle.get(event_key, {})
 	if not (dialogue_value is Dictionary):
 		return
 	var dialogue: Dictionary = (dialogue_value as Dictionary).duplicate(true)
@@ -232,8 +308,8 @@ func _queue_focus_timer_reaction(
 			"character_id": character_id,
 			"dialogue": dialogue,
 			"event": event_key,
-			"task_name": str(active_focus_session.get("task_name", "")),
-			"planned_minutes": int(active_focus_session.get("planned_minutes", 0)),
+			"task_name": task_name,
+			"planned_minutes": planned_minutes,
 		},
 		DIALOGUE_PRIORITY_FOCUS
 	)

@@ -73,6 +73,14 @@ func send_messages(
 		for value: Variant in headers_value:
 			headers.append(str(value))
 
+	var limit := int(request_options.get("max_output_tokens", 0))
+	if limit > 0:
+		var request_body: Dictionary = request_info["body"]
+		match _active_provider:
+			"openai": request_body["max_output_tokens"] = limit
+			"google", "gemini": request_body["generationConfig"] = {"maxOutputTokens": limit}
+			"openrouter": request_body["max_completion_tokens"] = limit
+			_: request_body["max_tokens"] = limit
 	var body_value: Variant = request_info.get("body", {})
 	var body_text: String = JSON.stringify(body_value)
 

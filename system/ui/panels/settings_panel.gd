@@ -100,6 +100,12 @@ func build_ui() -> void:
 	title.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_LARGE)
 	add_child(title)
 
+	var subtitle := Label.new()
+	_bind_localized_text(subtitle, "설정", "Settings")
+	subtitle.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_SMALL)
+	subtitle.remove_theme_color_override("font_color")
+	add_child(subtitle)
+
 	add_child(HSeparator.new())
 
 	build_language_section()
@@ -107,6 +113,7 @@ func build_ui() -> void:
 	build_appearance_section()
 	build_startup_program_section()
 	build_update_section()
+	build_backup_section()
 	build_ai_section()
 	build_pack_section()
 
@@ -963,6 +970,11 @@ func _update_error_text(code: String) -> String:
 				"Could not connect to GitHub to check or download the update.",
 				"GitHub에 연결하여 업데이트를 확인하거나 다운로드하지 못했습니다."
 			)
+		"close_creators_required":
+			return _l("Save your creator work and close both creators before updating.", "크리에이터 작업을 저장하고 두 크리에이터를 닫은 뒤 업데이트해 주세요.")
+		"rollback_failed":
+			return _l("Update recovery needs attention. Previous files are in the updates/rollback folder.", "업데이트 복구가 필요합니다. 이전 파일은 updates/rollback 폴더에 있습니다.")
+
 		"invalid_response", "invalid_version":
 			return _l(
 				"GitHub returned an invalid release response.",
@@ -1500,3 +1512,28 @@ func _notify_chat_recursive(
 			child
 		)
 
+
+func build_backup_section() -> void:
+	_add_section_header("Data backup", "데이터 백업")
+	var hint := Label.new()
+	_bind_localized_text(hint, "Export chats, notes, calendar and preferences. API keys and external packs are excluded.", "채팅, 메모, 일정, 설정을 내보냅니다. API 키와 외부 캐릭터·말풍선 팩은 제외됩니다.")
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(hint)
+	var button := Button.new()
+	_bind_localized_text(button, "Export backup ZIP", "백업 ZIP 내보내기")
+	add_child(button)
+	var dialog := FileDialog.new()
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dialog.use_native_dialog = true
+	dialog.filters = PackedStringArray(["*.zip ; ZIP backup"])
+	dialog.current_file = "HaruHana-backup-" + Time.get_date_string_from_system() + ".zip"
+	add_child(dialog)
+	var result := Label.new()
+	result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(result)
+	button.pressed.connect(func() -> void: dialog.popup_centered_ratio(0.65))
+	dialog.file_selected.connect(func(path: String) -> void:
+		var error := UserDataBackup.export_zip(path)
+		result.text = _l("Backup saved: ", "백업 저장 완료: ") + path if error == OK else _l("Could not save backup.", "백업을 저장하지 못했습니다.")
+	)

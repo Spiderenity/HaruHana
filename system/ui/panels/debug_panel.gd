@@ -28,10 +28,7 @@ func create_content() -> VBoxContainer:
 	content.add_child(title_label)
 
 	var description := Label.new()
-	description.text = _l(
-		"Trigger runtime paths that are difficult to test through normal use.",
-		"일반 사용으로 확인하기 어려운 런타임 동작을 직접 실행합니다."
-	)
+	description.text = _l("디버그", "Debug")
 	_style_secondary_label(description)
 	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	content.add_child(description)
