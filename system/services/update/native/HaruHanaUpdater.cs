@@ -282,7 +282,8 @@ internal static class HaruHanaUpdater
     private static bool IsManagedFile(string relative)
     {
         return relative == MainExecutable || relative == CharacterCreatorExecutable ||
-            relative == BubbleCreatorExecutable || relative == UpdaterExecutable || relative == NativeLibrary;
+            relative == BubbleCreatorExecutable || relative == UpdaterExecutable || relative == NativeLibrary ||
+            relative == "사용 설명서.html";
     }
 
     // The journal and originals survive interruption. The next attempt restores them first.

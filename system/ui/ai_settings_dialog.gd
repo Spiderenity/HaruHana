@@ -19,14 +19,15 @@ var custom_label: Label
 var key_label: Label
 var cancel_button: Button
 var save_button: Button
+var api_help_button: LinkButton
 var background_panel: PanelContainer
 var _finished_emitted: bool = false
 
 func _ready() -> void:
 	theme = AppearanceSettingsScript.build_theme()
 	title = _l("AI Settings", "AI 설정")
-	size = Vector2i(560, 330)
-	min_size = Vector2i(480, 300)
+	size = Vector2i(580, 390)
+	min_size = Vector2i(520, 380)
 	transient = true
 	close_requested.connect(_cancel)
 	_build_ui()
@@ -102,6 +103,9 @@ func _build_ui() -> void:
 	api_key_input.custom_minimum_size.y = AppearanceSettingsScript.UI_CONTROL_HEIGHT
 	api_key_input.secret = true
 	key_row.add_child(api_key_input)
+	api_help_button = LinkButton.new()
+	api_help_button.pressed.connect(_open_api_help)
+	box.add_child(api_help_button)
 
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -139,6 +143,7 @@ func apply_language() -> void:
 	model_label.text = _l("Model", "모델")
 	custom_label.text = _l("OpenRouter model ID", "OpenRouter 모델 ID")
 	key_label.text = _l("API key", "API 키")
+	api_help_button.text = _l("How do I get an API key?", "API 키 발급 방법 · 사용 설명서")
 	cancel_button.text = _l("Cancel", "취소")
 	save_button.text = _l("Save AI settings", "AI 설정 저장")
 	if model_selector != null and model_selector.item_count > 0:
@@ -146,6 +151,37 @@ func apply_language() -> void:
 			model_selector.item_count - 1,
 			_l("Custom OpenRouter model...", "OpenRouter 모델 직접 입력...")
 		)
+
+func _open_api_help() -> void:
+	const resource_path := "res://manual/사용 설명서.html"
+	const local_path := "user://manual/사용 설명서.html"
+	var source := FileAccess.open(resource_path, FileAccess.READ)
+	if source == null:
+		status_label.text = _l("The user guide could not be loaded.", "사용 설명서를 불러올 수 없습니다.")
+		return
+	var folder_error := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://manual"))
+	if folder_error != OK:
+		status_label.text = _l("The user guide folder could not be created.", "사용 설명서 폴더를 만들 수 없습니다.")
+		return
+	var output := FileAccess.open(local_path, FileAccess.WRITE)
+	if output == null:
+		status_label.text = _l("The user guide could not be saved.", "사용 설명서를 저장할 수 없습니다.")
+		return
+	output.store_buffer(source.get_buffer(source.get_length()))
+	output.flush()
+	var write_error := output.get_error()
+	output.close()
+	if write_error != OK:
+		status_label.text = _l("The user guide could not be saved.", "사용 설명서를 저장할 수 없습니다.")
+		return
+	var path := ProjectSettings.globalize_path(local_path).replace("\\", "/")
+	var segments := path.split("/")
+	for index in range(segments.size()):
+		if not segments[index].ends_with(":"):
+			segments[index] = segments[index].uri_encode()
+	var url := "file:///" + "/".join(segments) + "#api-key"
+	if OS.shell_open(url) != OK:
+		status_label.text = _l("Could not open the browser. Open the HTML guide in the app folder.", "브라우저를 열 수 없습니다. 앱 폴더의 사용 설명서 HTML을 열어 주세요.")
 
 func open_centered() -> void:
 	_finished_emitted = false

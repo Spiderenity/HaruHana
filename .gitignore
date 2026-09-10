@@ -1,5 +1,6 @@
 .godot/
 .import/
+*.import
 .mono/
 export_credentials.cfg
 

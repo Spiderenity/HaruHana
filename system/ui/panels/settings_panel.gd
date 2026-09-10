@@ -43,6 +43,7 @@ var bubble_font_size_slider: HSlider
 var bubble_font_size_value_label: Label
 var bubble_style_selector: OptionButton
 var appearance_status_label: Label
+var backup_hint: Label
 var applying_appearance: bool = false
 var startup_program_check: CheckBox
 var startup_program_status: Label
@@ -196,6 +197,8 @@ func _apply_language_to_node(node: Node) -> void:
 
 func apply_appearance() -> void:
 	_update_generation_interval_editable()
+	if is_instance_valid(backup_hint):
+		backup_hint.add_theme_color_override("font_color", AppearanceSettingsScript.get_ui_color("muted"))
 
 func apply_language() -> void:
 	applying_language = true
@@ -1516,6 +1519,9 @@ func _notify_chat_recursive(
 func build_backup_section() -> void:
 	_add_section_header("Data backup", "데이터 백업")
 	var hint := Label.new()
+	backup_hint = hint
+	hint.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_SMALL)
+	hint.add_theme_color_override("font_color", AppearanceSettingsScript.get_ui_color("muted"))
 	_bind_localized_text(hint, "Export chats, notes, calendar and preferences. API keys and external packs are excluded.", "채팅, 메모, 일정, 설정을 내보냅니다. API 키와 외부 캐릭터·말풍선 팩은 제외됩니다.")
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint)

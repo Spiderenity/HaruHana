@@ -321,33 +321,10 @@ static func get_bubble_font(font_path: String = "") -> Font:
 	return _load_font(font_path)
 
 static func get_ui_font() -> Font:
-	var preferred_path: String = (
-		"res://assets/fonts/NanumSquareRoundR.ttf"
-		if get_effective_mode() == "dark"
-		else "res://assets/fonts/NanumSquareNeo-Variable.ttf"
-	)
-	var font: Font = _load_font(preferred_path)
-
-	if font == null:
-		font = _load_font(
-			"res://assets/fonts/NanumSquareRoundR.ttf"
-			if get_effective_mode() == "dark"
-			else "res://assets/fonts/NanumSquareRoundL.ttf"
-		)
-
-	return font
+	return _load_font("res://assets/fonts/NanumSquareRoundR.ttf")
 
 static func get_round_ui_font() -> Font:
-	var font: Font = _load_font(
-		"res://assets/fonts/NanumSquareRoundL.ttf"
-	)
-
-	if font == null:
-		font = _load_font(
-			"res://assets/fonts/NanumSquareNeo-Variable.ttf"
-		)
-
-	return font
+	return get_ui_font()
 
 static func get_external_font_directory_path() -> String:
 	return DistributionPathsScript.get_fonts_directory()
