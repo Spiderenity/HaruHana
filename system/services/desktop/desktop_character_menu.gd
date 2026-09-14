@@ -579,7 +579,13 @@ func _rebuild_main_page(show_immediately: bool = true) -> void:
 	var talk_label: String = _l("Talk", "대화")
 	var talk_button: Button = _make_wide_button(talk_label, _talk_hover_description("talk"))
 	talk_button.pressed.connect(_show_talk_page)
-	content_host.add_child(talk_button)
+	var action_row := HBoxContainer.new()
+	action_row.add_theme_constant_override("separation", 8)
+	content_host.add_child(action_row)
+	action_row.add_child(talk_button)
+	var quit_button := _make_wide_button(_l("Quit", "종료"), _l("Say goodbye and close HaruHana", "인사를 나누고 하루하나를 종료해요"))
+	quit_button.pressed.connect(_on_talk_option_pressed.bind("quit", ""))
+	action_row.add_child(quit_button)
 
 	_set_content_revealed(show_immediately)
 	if show_immediately:
@@ -912,7 +918,7 @@ func _style_menu_button(button: Button) -> void:
 	if button == null:
 		return
 	var settings: Dictionary = AppearanceSettingsScript.load_settings()
-	var font_path: String = str(settings.get("bubble_font", AppearanceSettingsScript.DEFAULT_BUBBLE_FONT))
+	var font_path: String = owner_actor.get_character_font_path() if owner_actor != null else AppearanceSettingsScript.get_bubble_font_path()
 	var bubble_skin: String = str(settings.get("bubble_skin", AppearanceSettingsScript.DEFAULT_BUBBLE_SKIN))
 	var text_color: Color = AppearanceSettingsScript.get_bubble_skin_text_color(bubble_skin)
 	var font_size: int = clampi(
@@ -1023,7 +1029,7 @@ func _refresh_window_height() -> void:
 
 	var desired_height: int = ceili(_measure_menu_height())
 
-	var usable_screen: Rect2i = DisplayServer.screen_get_usable_rect()
+	var usable_screen: Rect2i = owner_actor.get_desktop_usable_rect() if owner_actor != null else DisplayServer.screen_get_usable_rect(DisplayServer.get_primary_screen())
 	var screen_limit: int = maxi(1, usable_screen.size.y - 24)
 	desired_height = clampi(
 		desired_height,
@@ -1049,6 +1055,12 @@ func _measure_control_height(control: Control, available_width: float) -> float:
 		return _measure_label_height(control as Label, available_width)
 	if control is GridContainer:
 		return _measure_grid_height(control as GridContainer, available_width)
+	if control is HBoxContainer:
+		var height := 0.0
+		for child: Node in control.get_children():
+			if child is Control:
+				height = maxf(height, _measure_control_height(child, available_width / maxf(1.0, control.get_child_count())))
+		return height
 	if control is VBoxContainer:
 		return _measure_vbox_height(control as VBoxContainer, available_width)
 
@@ -1200,7 +1212,7 @@ func _apply_appearance(force: bool = false) -> void:
 	if menu_panel == null or intro_label == null:
 		return
 	var settings: Dictionary = AppearanceSettingsScript.load_settings()
-	var font_path: String = str(settings.get("bubble_font", AppearanceSettingsScript.DEFAULT_BUBBLE_FONT))
+	var font_path: String = owner_actor.get_character_font_path() if owner_actor != null else AppearanceSettingsScript.get_bubble_font_path()
 	var font_size: int = clampi(int(settings.get("bubble_font_size", AppearanceSettingsScript.DEFAULT_BUBBLE_FONT_SIZE)), 12, 52)
 	var bubble_skin: String = str(settings.get("bubble_skin", AppearanceSettingsScript.DEFAULT_BUBBLE_SKIN))
 	var text_color: Color = AppearanceSettingsScript.get_bubble_skin_text_color(bubble_skin)

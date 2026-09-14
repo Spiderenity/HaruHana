@@ -437,6 +437,13 @@ func enable_host_window_clickthrough() -> void:
 	)
 
 	host_window.mouse_passthrough = true
+	# The root hosts taskbar actions only; every visible surface has its own window.
+	# Keep its native bounds away from desktop icons even if passthrough is reset.
+	host_window.min_size = Vector2i.ONE
+	host_window.max_size = Vector2i.ONE
+	host_window.size = Vector2i.ONE
+	host_window.position = OFFSCREEN_WINDOW_POSITION
+
 
 func _wait_for_startup_window_settle() -> void:
 	for _frame_index: int in range(
@@ -523,6 +530,7 @@ func reload_desktop_characters(
 			)
 		)
 
+	var had_requested_character := slots.any(func(id: String) -> bool: return not id.is_empty())
 	for slot_index: int in range(
 		MAX_DESKTOP_CHARACTERS
 	):
@@ -552,6 +560,9 @@ func reload_desktop_characters(
 		and slots[0] == slots[1]
 	):
 		slots[1] = ""
+
+	if had_requested_character and slots.all(func(id: String) -> bool: return id.is_empty()) and CharacterProfiles.get_current_pack() == CharacterProfiles.DEFAULT_PACK_ID:
+		slots[0] = "crt"
 
 	pack_settings["slots"] = (
 		slots.duplicate()
@@ -1600,6 +1611,8 @@ func spawn_character(
 		push_error("Runtime character build failed: " + character_id)
 		return null
 
+	actor.set_meta("preferences_pack", pack_id)
+	actor.set_meta("remember_desktop_position", host_window_clickthrough_on_ready)
 	actor.configure_character_id(character_id)
 	actor.configure_desktop_slot(slot_index)
 	_set_initial_pair_layout(actor, reserve_pair_layout, partner_width_hint)
@@ -1717,6 +1730,9 @@ func _character_window_is_priming() -> bool:
 	return false
 
 func _place_spawned_cast_in_leftmost_available_space() -> void:
+	for actor_value: Variant in spawned_actors.values():
+		if is_instance_valid(actor_value) and actor_value.pet_interaction != null and actor_value.pet_interaction.has_saved_position():
+			return
 	if external_occupied_rects.is_empty():
 		return
 	var actor_rects: Array[Rect2] = get_spawned_character_rects()
@@ -2611,6 +2627,11 @@ func _on_actor_speech_bubble_offset_changed(character_id: String, offset: Vector
 	offsets[_speech_bubble_offset_key(character_id)] = {"x": offset.x, "y": offset.y}
 	settings["speech_bubble_offsets"] = offsets
 	save_settings(settings)
+
+func reset_character_positions() -> void:
+	for actor_value: Variant in spawned_actors.values():
+		if actor_value is DesktopCharacterActor and is_instance_valid(actor_value) and actor_value.pet_interaction != null:
+			actor_value.pet_interaction.reset_desktop_position()
 
 func reset_speech_bubble_offsets() -> Error:
 	var settings: Dictionary = load_settings()

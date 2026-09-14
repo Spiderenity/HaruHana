@@ -12,7 +12,7 @@ const CACHE_FOLDER: String = (
 	"user://ambient"
 )
 
-const DIALOGUE_SCHEMA_VERSION: int = 6
+const DIALOGUE_SCHEMA_VERSION: int = 7
 
 const MAX_POOL_EVENTS: int = 75
 
@@ -914,6 +914,7 @@ func _common_prompt_prefix() -> String:
 		"You generate short ambient dialogue for fictional adult characters.\n"
 		+ "They are visibly present as desktop companions and speak through "
 		+ "speech bubbles; they are not narrators or software assistants.\n"
+		+ "The user may be working, reading, or thinking. Never infer procrastination or neglect from silence. Do not complain that they are working or pressure them to play with you.\n"
 		+ "DATE: "
 		+ get_today()
 		+ "\n"

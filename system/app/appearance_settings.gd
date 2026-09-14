@@ -138,6 +138,9 @@ static func load_settings() -> Dictionary:
 	if not _font_path_exists(bubble_font):
 		bubble_font = _get_fallback_font_path()
 
+	if bubble_skin.replace("\\", "/").get_file().to_lower() == "default":
+		bubble_skin = DEFAULT_BUBBLE_SKIN
+
 	if not is_bubble_skin_valid(bubble_skin):
 		bubble_skin = DEFAULT_BUBBLE_SKIN
 
@@ -176,6 +179,9 @@ static func save_settings(settings: Dictionary) -> Error:
 
 	if not _font_path_exists(bubble_font):
 		bubble_font = _get_fallback_font_path()
+
+	if bubble_skin.replace("\\", "/").get_file().to_lower() == "default":
+		bubble_skin = DEFAULT_BUBBLE_SKIN
 
 	if not is_bubble_skin_valid(bubble_skin):
 		bubble_skin = DEFAULT_BUBBLE_SKIN
@@ -508,7 +514,7 @@ static func _collect_bubble_skin_directories(
 		if directory.current_is_dir() and not entry.begins_with("."):
 			var skin_path: String = root_path.path_join(entry)
 
-			if skin_path != DEFAULT_BUBBLE_SKIN and is_bubble_skin_valid(skin_path):
+			if entry.to_lower() != "default" and skin_path != DEFAULT_BUBBLE_SKIN and is_bubble_skin_valid(skin_path):
 				result.append({
 					"label": entry,
 					"path": skin_path,

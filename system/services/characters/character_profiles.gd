@@ -678,6 +678,9 @@ static func build_character_prompt(character_id: String) -> String:
 
 static func compact_prompt_profile(profile: Dictionary) -> Dictionary:
 	var compact: Dictionary = {}
+	var policy: Dictionary = profile.get("speech_policy", {})
+	if not policy.is_empty():
+		compact["speech_policy"] = {"names": policy.get("spoken_names", {}), "naming_rule": policy.get("naming_rule", ""), "rule": policy.get("rule", "")}
 	# Keep identity/voice before incidental lore; no authoring-only expression instructions.
 	var limits := {"id": 60, "display_name": 80, "identity": 300, "voice": 650,
 		"core_personality": 420, "relationships": 280, "private_internal": 200,

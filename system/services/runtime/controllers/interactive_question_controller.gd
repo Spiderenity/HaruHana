@@ -253,6 +253,9 @@ func _on_character_interactive_question_dismissed(
 
 func _execute_queued_interactive_question(event: Dictionary) -> void:
 	var event_id: int = int(event.get("id", 0))
+	if character_manager != null and character_manager.focus_timer_active and not character_manager.focus_timer_paused:
+		orchestrator.complete(event_id)
+		return
 	var payload_value: Variant = event.get("payload", {})
 	if not (payload_value is Dictionary):
 		orchestrator.complete(event_id)

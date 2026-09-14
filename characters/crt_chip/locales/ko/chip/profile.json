@@ -119,5 +119,13 @@
       "(surprised)진짜? (happy)칩 잘했어! 다음에도 할래!",
       "(happy)계속 화면 보고 있었어! (curious)혹시 화면으로 빨려 들어가는 거야?"
     ]
+  },
+  "speech_policy": {
+    "spoken_names": {
+      "CRT-chan": "CRT양",
+      "CRT": "CRT양",
+      "Chip": "칩"
+    },
+    "naming_rule": "한국어 대사에서 이름은 CRT양, 칩으로 부른다. 내부 ID나 영어식 이름으로 호칭하지 않는다."
   }
 }

@@ -72,6 +72,8 @@ var handle_window: Window
 var handle_button: Button
 
 var dragging: bool = false
+var screen_check_seconds: float = 0.0
+var screen_layout_signature: String = ""
 
 var automatic_slide_active: bool = false
 var automatic_slide_tween: Tween = null
@@ -1105,9 +1107,10 @@ func get_effective_desktop_slot_index() -> int:
 	return desktop_slot_index
 
 func move_to_default_position() -> void:
+	if restore_saved_position():
+		return
 	var usable_screen: Rect2i = (
-		DisplayServer
-			.screen_get_usable_rect()
+		get_usable_screen()
 	)
 
 	var first_character_left: float = (
@@ -1189,7 +1192,7 @@ func _reflow_default_pair_layout() -> bool:
 	if slot_one_rect.size == Vector2.ZERO or slot_zero_rect.size == Vector2.ZERO:
 		return false
 
-	var usable_screen: Rect2i = DisplayServer.screen_get_usable_rect()
+	var usable_screen: Rect2i = get_usable_screen()
 	var slot_one_left: float = (
 		float(usable_screen.position.x)
 		+ float(DEFAULT_CHARACTER_LEFT_MARGIN)
@@ -1198,8 +1201,10 @@ func _reflow_default_pair_layout() -> bool:
 		slot_one_left + slot_one_rect.size.x + float(CHARACTER_GAP)
 	)
 
-	slot_one._set_default_desktop_pet_position(slot_one_left)
-	slot_zero._set_default_desktop_pet_position(slot_zero_left)
+	if not slot_one.restore_saved_position():
+		slot_one._set_default_desktop_pet_position(slot_one_left)
+	if not slot_zero.restore_saved_position():
+		slot_zero._set_default_desktop_pet_position(slot_zero_left)
 	return true
 
 func _get_default_pair_interactions() -> Dictionary:
@@ -1236,8 +1241,7 @@ func _set_default_desktop_pet_position(
 		return
 
 	var usable_screen: Rect2i = (
-		DisplayServer
-			.screen_get_usable_rect()
+		get_usable_screen()
 	)
 
 	var minimum_pet_left: float = float(
@@ -1297,7 +1301,7 @@ func configure_vertical_movement(enabled: bool) -> void:
 	var ground_rect: Rect2 = get_sprite_ground_rect()
 	if ground_rect.size == Vector2.ZERO:
 		ground_rect = pet_rect
-	var usable_screen: Rect2i = DisplayServer.screen_get_usable_rect()
+	var usable_screen: Rect2i = get_usable_screen()
 	locked_y = usable_screen.end.y - roundi(ground_rect.end.y) - DEFAULT_SCREEN_BOTTOM_MARGIN
 	main_window.position = Vector2i(current_x, locked_y)
 	sync_handle_position()
@@ -1673,8 +1677,7 @@ func slide_pet_to_desktop_left(
 		return false
 
 	var usable_screen: Rect2i = (
-		DisplayServer
-			.screen_get_usable_rect()
+		get_usable_screen()
 	)
 
 	var minimum_pet_left: float = float(
@@ -1818,81 +1821,126 @@ func _on_handle_button_down() -> void:
 func update_dragging() -> void:
 	if not dragging:
 		return
-
-	var mouse_buttons: int = (
-		DisplayServer
-			.mouse_get_button_state()
-	)
-
-	var left_pressed: bool = (
-		mouse_buttons
-		& MOUSE_BUTTON_MASK_LEFT
-	) != 0
-
-	if not left_pressed:
+	if (DisplayServer.mouse_get_button_state() & MOUSE_BUTTON_MASK_LEFT) == 0:
 		dragging = false
+		save_desktop_position()
 		return
-
-	var mouse_x: int = (
-		DisplayServer
-			.mouse_get_position()
-			.x
-	)
-	var mouse_y: int = DisplayServer.mouse_get_position().y
-
-	drag_distance = maxi(absi(mouse_x - mouse_down_x), absi(mouse_y - mouse_down_y))
-
-	var new_x: int = (
-		mouse_x
-		- drag_offset_x
-	)
-
-	var usable_screen: Rect2i = (
-		DisplayServer
-			.screen_get_usable_rect()
-	)
-
-	var pet_rect: Rect2 = (
-		get_pet_rect()
-	)
-
-	var minimum_x: int = (
-		usable_screen.position.x
-		- floori(
-			pet_rect.position.x
-		)
-	)
-
-	var maximum_x: int = (
-		usable_screen.end.x
-		- ceili(
-			pet_rect.end.x
-		)
-	)
-
-	new_x = clampi(
-		new_x,
-		minimum_x,
-		maximum_x
-	)
-	var new_y: int = locked_y
-	if vertical_movement_enabled:
-		var minimum_y: int = usable_screen.position.y - floori(pet_rect.position.y)
-		var maximum_y: int = usable_screen.end.y - ceili(pet_rect.end.y)
-		new_y = clampi(mouse_y - drag_offset_y, minimum_y, maximum_y)
-
-	main_window.position = Vector2i(
-		new_x,
-		new_y
-	)
-
+	var mouse := DisplayServer.mouse_get_position()
+	drag_distance = maxi(absi(mouse.x - mouse_down_x), absi(mouse.y - mouse_down_y))
+	var target_screen := DesktopPreferences.screen_at(Vector2(mouse))
+	var usable := DisplayServer.screen_get_usable_rect(target_screen)
+	var target := Vector2i(mouse.x - drag_offset_x, mouse.y - drag_offset_y)
+	if not vertical_movement_enabled:
+		var ground := get_sprite_ground_rect()
+		if ground.size == Vector2.ZERO:
+			ground = get_pet_rect()
+		target.y = usable.end.y - roundi(ground.end.y) - DEFAULT_SCREEN_BOTTOM_MARGIN
+	main_window.position = DesktopPreferences.clamp_window(target, get_pet_rect(), usable)
+	locked_y = main_window.position.y
 	sync_handle_position()
-
 	sync_interaction_capture()
+
+func get_current_screen() -> int:
+	if main_window == null or not is_instance_valid(main_window):
+		return DisplayServer.get_primary_screen()
+	if main_window.position.x <= -30000:
+		return DisplayServer.get_primary_screen()
+	return DesktopPreferences.screen_at(Vector2(main_window.position) + get_pet_rect().get_center())
+
+func get_usable_screen() -> Rect2i:
+	return DisplayServer.screen_get_usable_rect(get_current_screen())
+
+func _can_remember_position() -> bool:
+	return is_instance_valid(character_actor) and not get_character_id().is_empty() and bool(character_actor.get_meta("remember_desktop_position", false))
+
+func _preferences_pack() -> String:
+	return str(character_actor.get_meta("preferences_pack", "")) if is_instance_valid(character_actor) else ""
+
+func has_saved_position() -> bool:
+	return _can_remember_position() and DesktopPreferences.get_entry(get_character_id(), _preferences_pack()).get("position", null) is Array
+
+func save_desktop_position() -> void:
+	if not _can_remember_position() or main_window == null:
+		return
+	var usable := get_usable_screen()
+	var pet := get_desktop_pet_rect()
+	var error := DesktopPreferences.update_entry(get_character_id(), {
+		"position": [pet.position.x - usable.position.x, pet.position.y - usable.position.y],
+		"screen_origin": [DisplayServer.screen_get_position(get_current_screen()).x, DisplayServer.screen_get_position(get_current_screen()).y]
+	}, _preferences_pack())
+	if error != OK:
+		push_warning("Could not save character position: " + error_string(error))
+
+func restore_saved_position() -> bool:
+	if not has_saved_position() or main_window == null or get_pet_rect().size == Vector2.ZERO:
+		return false
+	var entry := DesktopPreferences.get_entry(get_character_id(), _preferences_pack())
+	var position_value: Array = entry.get("position", [])
+	var origin: Array = entry.get("screen_origin", [])
+	if position_value.size() != 2 or origin.size() != 2:
+		return false
+	var screen := -1
+	for index: int in range(DisplayServer.get_screen_count()):
+		if DisplayServer.screen_get_position(index) == Vector2i(int(origin[0]), int(origin[1])):
+			screen = index
+			break
+	if screen < 0:
+		reset_desktop_position()
+		return true
+	var usable := DisplayServer.screen_get_usable_rect(screen)
+	var target := Vector2i((Vector2(usable.position) + Vector2(float(position_value[0]), float(position_value[1])) - get_pet_rect().position).round())
+	if not vertical_movement_enabled:
+		var ground := get_sprite_ground_rect()
+		target.y = usable.end.y - roundi((get_pet_rect() if ground.size == Vector2.ZERO else ground).end.y)
+	main_window.position = DesktopPreferences.clamp_window(target, get_pet_rect(), usable)
+	locked_y = main_window.position.y
+	return true
+
+func reset_desktop_position() -> void:
+	if main_window == null:
+		return
+	var screen := DisplayServer.get_primary_screen()
+	var usable := DisplayServer.screen_get_usable_rect(screen)
+	# Keep a predictable slot gap without moving peers or restoring old positions.
+	var left := float(usable.position.x + DEFAULT_CHARACTER_LEFT_MARGIN)
+	if get_effective_desktop_slot_index() == 0:
+		var pair := _get_default_pair_interactions()
+		if pair.has(1):
+			left += pair[1].get_pet_rect().size.x + CHARACTER_GAP
+	main_window.position = usable.position
+	_set_default_desktop_pet_position(left)
+	sync_handle_position()
+	sync_interaction_capture()
+	save_desktop_position()
+
+func move_to_screen(screen: int) -> void:
+	if main_window == null or screen < 0 or screen >= DisplayServer.get_screen_count():
+		return
+	var source := get_usable_screen()
+	var target_screen := DisplayServer.screen_get_usable_rect(screen)
+	var target := main_window.position + target_screen.position - source.position
+	if not vertical_movement_enabled:
+		var ground := get_sprite_ground_rect()
+		target.y = target_screen.end.y - roundi((get_pet_rect() if ground.size == Vector2.ZERO else ground).end.y)
+	main_window.position = DesktopPreferences.clamp_window(target, get_pet_rect(), target_screen)
+	locked_y = main_window.position.y
+	sync_handle_position()
+	sync_interaction_capture()
+	save_desktop_position()
 
 func _process(
 	delta: float
 ) -> void:
+	screen_check_seconds += delta
+	if screen_check_seconds >= 1.0 and _can_remember_position():
+		screen_check_seconds = 0.0
+		var layout := ""
+		for index: int in range(DisplayServer.get_screen_count()):
+			layout += str(DisplayServer.screen_get_usable_rect(index))
+		if not screen_layout_signature.is_empty() and layout != screen_layout_signature and not dragging:
+			if not restore_saved_position():
+				reset_desktop_position()
+		screen_layout_signature = layout
 
 	sync_profile_interaction_rect()
 

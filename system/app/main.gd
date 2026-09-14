@@ -106,14 +106,17 @@ var overlap_cooldown_seconds: float:
 
 func _ready() -> void:
 	StartupProgramSettingsScript.sync_if_enabled()
-	runtime_instance_coordinator = RuntimeInstanceCoordinatorScript.new()
-	add_child(runtime_instance_coordinator)
 	var taskbar_action := _get_taskbar_action()
-	if not runtime_instance_coordinator.claim("haruhana"):
-		if not taskbar_action.is_empty():
-			runtime_instance_coordinator.submit_command("haruhana", taskbar_action)
-		get_tree().quit()
-		return
+	runtime_instance_coordinator = get_tree().root.get_node_or_null("HaruHanaInstanceCoordinator") as RuntimeInstanceCoordinator
+	if runtime_instance_coordinator == null:
+		# Direct scene runs in the editor still need ownership checks.
+		runtime_instance_coordinator = RuntimeInstanceCoordinatorScript.new()
+		add_child(runtime_instance_coordinator)
+		if not runtime_instance_coordinator.claim("haruhana"):
+			if not taskbar_action.is_empty():
+				runtime_instance_coordinator.submit_command("haruhana", taskbar_action)
+			get_tree().quit()
+			return
 	runtime_instance_coordinator.command_received.connect(_on_runtime_command_received)
 	runtime_instance_coordinator.bind_character_manager(desktop_character_manager)
 	add_to_group(&"desktop_dialogue_hosts")
@@ -404,7 +407,11 @@ func connect_runtime_signals() -> void:
 		exit_controller.request_system_close
 	)
 	desktop_character_manager.character_menu_talk_action_requested.connect(
-		menu_talk_controller.handle_action
+		func(character_id: String, action: String, detail: String) -> void:
+			if action == "quit":
+				exit_controller._on_quit_requested()
+			else:
+				menu_talk_controller.handle_action(character_id, action, detail)
 	)
 	desktop_character_manager.character_interactive_question_answered.connect(
 		interactive_controller._on_character_interactive_question_answered

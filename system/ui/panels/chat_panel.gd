@@ -1597,7 +1597,7 @@ func _on_ai_response_received(
 		set_waiting_state(false)
 		status_label.text = _l("The reply had an invalid format or language. Please try again.", "답변 형식이나 언어가 올바르지 않아 표시하지 않았습니다. 다시 시도해 주세요.")
 		return
-	var reply: String = payload["reply"]
+	var reply: String = CharacterSpeechPolicy.apply(str(payload["reply"]), target_character_id)
 
 	var memory_value: Variant = (
 		payload.get(
@@ -1894,7 +1894,7 @@ func append_character_message(
 	display_name: String,
 	text: String
 ) -> void:
-	text = DialogueOutput.saved_reply(text)
+	text = CharacterSpeechPolicy.apply(DialogueOutput.saved_reply(text), character_id)
 	if text.is_empty():
 		return
 

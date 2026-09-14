@@ -525,7 +525,7 @@ func _sync_focus_timer_position() -> void:
 	var pet_rect: Rect2 = pet_interaction.get_desktop_pet_rect()
 	if pet_rect.size == Vector2.ZERO:
 		return
-	var screen: Rect2i = DisplayServer.screen_get_usable_rect()
+	var screen: Rect2i = get_desktop_usable_rect()
 	var target_x: int = roundi(pet_rect.get_center().x - float(focus_timer_window.size.x) / 2.0)
 	var target_y: int = roundi(pet_rect.position.y - float(focus_timer_window.size.y) - 8.0)
 	focus_timer_window.position = Vector2i(
@@ -820,7 +820,7 @@ func _apply_display_settings() -> void:
 				if ground_rect.size != Vector2.ZERO:
 					ground_end_y = ground_rect.end.y
 
-			var usable_screen: Rect2i = DisplayServer.screen_get_usable_rect()
+			var usable_screen: Rect2i = get_desktop_usable_rect()
 			target_y = usable_screen.end.y - roundi(ground_end_y)
 
 		window.position = Vector2i(target_x, target_y)
@@ -1413,7 +1413,7 @@ func _make_side_menu_rect(anchor: Rect2, menu_size: Vector2, right: bool) -> Rec
 	var x: float = anchor.end.x + gap if right else anchor.position.x - menu_size.x - gap
 	var y: float = anchor.position.y + anchor.size.y * 0.48 - menu_size.y * 0.5
 	var rect := Rect2(Vector2(x, y), menu_size)
-	var usable: Rect2i = DisplayServer.screen_get_usable_rect()
+	var usable: Rect2i = get_desktop_usable_rect()
 	var min_y: float = float(usable.position.y) + speech_bubble_screen_margin
 	var max_y: float = float(usable.end.y) - speech_bubble_screen_margin - menu_size.y
 	if max_y >= min_y:
@@ -1421,7 +1421,7 @@ func _make_side_menu_rect(anchor: Rect2, menu_size: Vector2, right: bool) -> Rec
 	return rect
 
 func _menu_rect_is_screen_safe(rect: Rect2) -> bool:
-	var usable: Rect2i = DisplayServer.screen_get_usable_rect()
+	var usable: Rect2i = get_desktop_usable_rect()
 	var margin: float = speech_bubble_screen_margin
 	return (
 		rect.position.x >= float(usable.position.x) + margin
@@ -1852,7 +1852,7 @@ func show_speech(
 	if speech_bubble_window == null:
 		return
 
-	var source_text: String = text.strip_edges()
+	var source_text: String = CharacterSpeechPolicy.apply(text.strip_edges(), character_id, str(get_meta("preferences_pack", "")))
 
 	if source_text.is_empty():
 		return
@@ -2203,8 +2203,7 @@ func _get_horizontal_screen_overflow(
 ) -> float:
 
 	var usable_screen: Rect2i = (
-		DisplayServer
-			.screen_get_usable_rect()
+		get_desktop_usable_rect()
 	)
 
 	var left_edge: float = (
@@ -2291,8 +2290,7 @@ func _should_place_bubble_on_right(
 		return own_center_x < nearest_center_x
 
 	var usable_screen: Rect2i = (
-		DisplayServer
-			.screen_get_usable_rect()
+		get_desktop_usable_rect()
 	)
 
 	var screen_center_x: float = (
@@ -2337,7 +2335,7 @@ func _make_bubble_desktop_rect(
 func _clamp_bubble_rect_to_screen(
 	rect: Rect2
 ) -> Rect2:
-	var usable_screen: Rect2i = DisplayServer.screen_get_usable_rect()
+	var usable_screen: Rect2i = get_desktop_usable_rect()
 	var minimum_x: float = float(usable_screen.position.x) + speech_bubble_screen_margin
 	var maximum_x: float = (
 		float(usable_screen.end.x)
@@ -2540,17 +2538,20 @@ func _reset_speech_bubble_height_lock() -> void:
 	speech_bubble_height_locked = false
 	speech_bubble_highest_desktop_y = 0.0
 
+func get_desktop_usable_rect() -> Rect2i:
+	if pet_interaction != null:
+		return pet_interaction.get_usable_screen()
+	return DisplayServer.screen_get_usable_rect(DisplayServer.get_primary_screen())
+
+func get_character_font_path() -> String:
+	return DesktopPreferences.font_path(character_id, str(get_meta("preferences_pack", "")))
+
 func _apply_bubble_appearance(force: bool) -> void:
 	if speech_label == null or speech_bubble == null:
 		return
 
 	var settings: Dictionary = AppearanceSettingsScript.load_settings()
-	var font_path: String = str(
-		settings.get(
-			"bubble_font",
-			AppearanceSettingsScript.DEFAULT_BUBBLE_FONT
-		)
-	)
+	var font_path: String = get_character_font_path()
 	var font_size: int = clampi(
 		int(
 			settings.get(

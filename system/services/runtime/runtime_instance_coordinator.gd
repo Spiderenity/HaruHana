@@ -245,9 +245,29 @@ func _load_live_state(kind: String) -> Dictionary:
 	return {}
 
 func _entry_has_fresh_lease(entry: Dictionary) -> bool:
-	# Wall-clock leases expire during sleep or a busy main thread. Process liveness does not.
-	var pid := int(entry.get("pid", 0))
-	return pid > 0 and OS.is_process_running(pid)
+	return is_instance_process_running(int(entry.get("pid", 0)))
+
+static func is_instance_process_running(pid: int) -> bool:
+	if pid <= 0:
+		return false
+	if pid == OS.get_process_id() or OS.is_process_running(pid):
+		return true
+	if OS.get_name() != "Windows":
+		return OS.is_process_running(pid)
+	# Godot on Windows only tracks children created by this process.
+	# Query the OS for independently launched instances; never treat query failure as death.
+	var output: Array = []
+	var tasklist := OS.get_environment("SystemRoot").path_join("System32/tasklist.exe")
+	var result := OS.execute(tasklist, PackedStringArray(["/FI", "PID eq %d" % pid, "/FO", "CSV", "/NH"]), output, false, false)
+	if result != 0:
+		push_warning("Could not verify running instance; keeping its lock.")
+		return true
+	for chunk: Variant in output:
+		for line: String in str(chunk).split("\n"):
+			var fields := line.split(",")
+			if fields.size() >= 2 and fields[1].strip_edges().trim_prefix('"').trim_suffix('"') == str(pid):
+				return true
+	return false
 
 func _read_json(path: String) -> Dictionary:
 	return JsonStore.load_dictionary(path, {})

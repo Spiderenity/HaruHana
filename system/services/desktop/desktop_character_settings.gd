@@ -17,6 +17,9 @@ var manager: DesktopCharacterManager = null
 var character_selectors: Array[OptionButton] = []
 
 var skin_selectors: Array[OptionButton] = []
+var font_selectors: Array[OptionButton] = []
+var monitor_selectors: Array[OptionButton] = []
+var monitor_refresh_seconds: float = 0.0
 
 var ambient_checks: Array[CheckBox] = []
 
@@ -75,6 +78,11 @@ func _apply_layout_spacing(node: Node) -> void:
 		_apply_layout_spacing(child)
 
 func _process(_delta: float) -> void:
+	monitor_refresh_seconds += _delta
+	if monitor_refresh_seconds >= 1.0 and not transition_in_progress and manager != null:
+		monitor_refresh_seconds = 0.0
+		for slot: int in range(monitor_selectors.size()):
+			_refresh_monitor_selector(slot)
 	var language: String = AppLanguageScript.get_language()
 	var debug_tooltips: bool = _debug_tooltips_enabled()
 	var language_changed: bool = language != last_language
@@ -235,7 +243,16 @@ func build_ui() -> void:
 		"말풍선 위치 초기화"
 	)
 	reset_bubbles_button.pressed.connect(_on_reset_bubble_positions_pressed)
-	add_child(reset_bubbles_button)
+	var reset_row := HBoxContainer.new()
+	add_child(reset_row)
+	reset_row.add_child(reset_bubbles_button)
+	var reset_characters := Button.new()
+	_bind_localized_text(reset_characters, "Reset character positions", "캐릭터 위치 초기화")
+	reset_characters.pressed.connect(func() -> void:
+		if manager != null:
+			manager.reset_character_positions()
+	)
+	reset_row.add_child(reset_characters)
 
 	opacity_slider.value_changed.connect(_on_character_opacity_changed)
 	bubble_opacity_slider.value_changed.connect(_on_global_setting_changed)
@@ -508,6 +525,13 @@ func build_slot(
 		[]
 	)
 
+	var font_selector := _add_extra_selector("Bubble font", "말풍선 폰트")
+	font_selectors.append(font_selector)
+	font_selector.item_selected.connect(_on_font_selected.bind(slot_index))
+	var monitor_selector := _add_extra_selector("Monitor", "모니터")
+	monitor_selectors.append(monitor_selector)
+	monitor_selector.item_selected.connect(_on_monitor_selected.bind(slot_index))
+
 	var behavior_row := HBoxContainer.new()
 	behavior_row.add_theme_constant_override("separation", 12)
 	add_child(behavior_row)
@@ -552,6 +576,67 @@ func build_slot(
 		)
 	)
 
+func _add_extra_selector(english: String, korean: String) -> OptionButton:
+	var row := HBoxContainer.new()
+	add_child(row)
+	var label := Label.new()
+	_bind_localized_text(label, english, korean)
+	label.custom_minimum_size.x = LABEL_COLUMN_WIDTH
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(label)
+	var selector := OptionButton.new()
+	selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selector.fit_to_longest_item = false
+	row.add_child(selector)
+	return selector
+
+func _refresh_font_selector(slot: int) -> void:
+	var selector := font_selectors[slot]
+	selector.clear()
+	selector.add_item(_l("Use common setting", "공통 설정 사용"))
+	selector.set_item_metadata(0, "")
+	var id := get_selected_character_id(slot)
+	var saved := str(DesktopPreferences.get_entry(id).get("font", ""))
+	for font: Dictionary in AppearanceSettingsScript.get_available_fonts():
+		selector.add_item(str(font.get("label", "")))
+		var index := selector.item_count - 1
+		selector.set_item_metadata(index, str(font.get("path", "")))
+		if str(font.get("path", "")) == saved:
+			selector.select(index)
+	selector.disabled = id.is_empty() or transition_in_progress
+
+func _refresh_monitor_selector(slot: int) -> void:
+	var selector := monitor_selectors[slot]
+	if selector.get_popup().visible:
+		return
+	selector.clear()
+	for index: int in range(DisplayServer.get_screen_count()):
+		var size := DisplayServer.screen_get_size(index)
+		var suffix := _l(" (Primary)", " (주 모니터)") if index == DisplayServer.get_primary_screen() else ""
+		selector.add_item(_l("Monitor ", "모니터 ") + str(index + 1) + suffix + " · %d × %d" % [size.x, size.y])
+	var actor := manager.get_actor(get_selected_character_id(slot)) if manager != null else null
+	selector.disabled = actor == null or transition_in_progress
+	if actor != null and actor.pet_interaction != null:
+		selector.select(actor.pet_interaction.get_current_screen())
+
+func _on_font_selected(index: int, slot: int) -> void:
+	if refreshing or transition_in_progress:
+		return
+	var id := get_selected_character_id(slot)
+	if id.is_empty():
+		return
+	var error := DesktopPreferences.update_entry(id, {"font": str(font_selectors[slot].get_item_metadata(index))})
+	if error != OK:
+		push_warning("Could not save character font: " + error_string(error))
+		_refresh_font_selector(slot)
+
+func _on_monitor_selected(index: int, slot: int) -> void:
+	if refreshing or transition_in_progress or manager == null:
+		return
+	var actor := manager.get_actor(get_selected_character_id(slot))
+	if actor != null and actor.pet_interaction != null:
+		actor.pet_interaction.move_to_screen(index)
+
 func refresh() -> void:
 	if not is_node_ready():
 		return
@@ -586,6 +671,8 @@ func refresh() -> void:
 		load_preferences_for_slot(
 			slot_index
 		)
+		_refresh_font_selector(slot_index)
+		_refresh_monitor_selector(slot_index)
 
 	refreshing = false
 
@@ -1055,6 +1142,9 @@ func apply_slot(
 		push_error("Could not save desktop settings. Error: " + str(error_code))
 
 func update_slot_enabled_states() -> void:
+	for slot: int in range(font_selectors.size()):
+		_refresh_font_selector(slot)
+		_refresh_monitor_selector(slot)
 	for slot_index: int in range(
 		SLOT_COUNT
 	):
@@ -1093,6 +1183,8 @@ func set_all_available(
 	available: bool
 ) -> void:
 
+	for selector: OptionButton in font_selectors + monitor_selectors:
+		selector.disabled = not available
 	for selector: OptionButton in character_selectors:
 		selector.disabled = (
 			not available
