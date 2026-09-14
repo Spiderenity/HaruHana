@@ -244,9 +244,12 @@ func build_ui() -> void:
 	)
 	reset_bubbles_button.pressed.connect(_on_reset_bubble_positions_pressed)
 	var reset_row := HBoxContainer.new()
+	reset_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reset_bubbles_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	add_child(reset_row)
 	reset_row.add_child(reset_bubbles_button)
 	var reset_characters := Button.new()
+	reset_characters.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_bind_localized_text(reset_characters, "Reset character positions", "캐릭터 위치 초기화")
 	reset_characters.pressed.connect(func() -> void:
 		if manager != null:

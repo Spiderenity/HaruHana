@@ -75,6 +75,13 @@ func run() -> void:
 	check(absf(default_left - float(DisplayServer.screen_get_usable_rect(DisplayServer.get_primary_screen()).position.x + 80)) <= 1.0, "disabled monitor uses default left position")
 	manager.reset_character_positions()
 	check(DesktopPreferences.get_entry("crt").has("font"), "position reset preserves character font")
+	DesktopPreferences.update_entry("crt", {"screen_origin":[-99999,-99999]})
+	DesktopPreferences.update_entry("chip", {"screen_origin":[-99999,-99999]})
+	manager.reload_desktop_characters(false)
+	await create_timer(2.0).timeout
+	var reset_crt := manager.get_actor("crt").get_desktop_pet_rect()
+	var reset_chip := manager.get_actor("chip").get_desktop_pet_rect()
+	check(reset_crt.position.x >= reset_chip.end.x, "cold start without saved monitor reserves room for both characters")
 	settings.queue_free()
 	manager.queue_free()
 	await process_frame

@@ -1907,6 +1907,8 @@ func reset_desktop_position() -> void:
 		var pair := _get_default_pair_interactions()
 		if pair.has(1):
 			left += pair[1].get_pet_rect().size.x + CHARACTER_GAP
+		elif initial_pair_layout_expected:
+			left += (initial_partner_width_hint if initial_partner_width_hint > 0.0 else get_pet_rect().size.x) + CHARACTER_GAP
 	main_window.position = usable.position
 	_set_default_desktop_pet_position(left)
 	sync_handle_position()
