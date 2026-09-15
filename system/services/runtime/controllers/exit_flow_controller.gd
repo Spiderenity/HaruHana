@@ -302,10 +302,6 @@ func _build_local_exit_dialogue() -> Dictionary:
 
 	return {
 		"speaker": speaker,
-		"text": (
-			"또 봐."
-			if CharacterProfiles.get_current_pack_output_language() == "ko"
-			else "See you."
-		),
+		"text": CharacterProfiles.get_default_ui_line(speaker, "exit"),
 		"mood": "neutral"
 	}

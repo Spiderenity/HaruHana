@@ -479,7 +479,7 @@ static func get_fallback_line(
 	if lines.is_empty():
 		return ""
 
-	var result: String = str(
+	var result: String = DialogueOutput.desktop_text(
 		lines[
 			randi_range(
 				0,
@@ -670,6 +670,38 @@ static func _normalize_profile_for_runtime(
 	result["user_context"] = UserProfileSettingsScript.get_prompt_context()
 	return result
 
+static func uses_polite_speech(profile: Dictionary) -> bool:
+	var voice: Dictionary = profile.get("voice", {})
+	var register := str(voice.get("register", "auto"))
+	if register != "auto":
+		return register == "polite"
+	var description := str(voice.get("casual", ""))
+	for negative: String in ["존댓말을 쓰지", "존댓말을 사용하지", "존댓말 대신", "높임말을 쓰지"]:
+		if description.contains(negative):
+			return false
+	return description.contains("존댓말") or description.contains("높임말") or description.contains("경어")
+
+static func default_ui_line_for_profile(profile: Dictionary, key: String, language: String = "ko") -> String:
+	var custom: Dictionary = profile.get("default_lines", {})
+	var supplied := DialogueOutput.desktop_text(custom.get(key, ""))
+	if not supplied.is_empty():
+		return supplied
+	if language != "ko":
+		return "Need anything?" if key == "menu" else "See you."
+	if uses_polite_speech(profile):
+		return "필요하신 게 있나요?" if key == "menu" else "다음에 또 뵐게요."
+	return "뭐 필요한 거 있어?" if key == "menu" else "또 봐."
+
+static func get_default_ui_line(character_id: String, key: String) -> String:
+	var profile := load_profile(character_id)
+	var custom: Dictionary = profile.get("default_lines", {})
+	if not str(custom.get(key, "")).strip_edges().is_empty():
+		return default_ui_line_for_profile(profile, key, get_current_pack_output_language())
+	var authored := get_fallback_line(character_id, key)
+	if not authored.is_empty():
+		return authored
+	return default_ui_line_for_profile(profile, key, get_current_pack_output_language())
+
 static func build_character_prompt(character_id: String) -> String:
 	var profile := load_profile(character_id)
 	if profile.is_empty():
@@ -678,6 +710,8 @@ static func build_character_prompt(character_id: String) -> String:
 
 static func compact_prompt_profile(profile: Dictionary) -> Dictionary:
 	var compact: Dictionary = {}
+	if uses_polite_speech(profile):
+		compact["speech_register"] = "Always address the user in Korean polite speech (존댓말), including brief reactions and greetings."
 	var policy: Dictionary = profile.get("speech_policy", {})
 	if not policy.is_empty():
 		compact["speech_policy"] = {"names": policy.get("spoken_names", {}), "naming_rule": policy.get("naming_rule", ""), "rule": policy.get("rule", "")}

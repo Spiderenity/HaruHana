@@ -3,12 +3,16 @@ config_version=5
 [application]
 
 config/name="HaruHana"
-config/version="0.1.7-beta"
+config/version="0.1.8-beta"
 run/main_scene="res://system/scenes/launch_router.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://assets/icon/icon.svg"
 boot_splash/show_image=false
 boot_splash/bg_color=Color(0, 0, 0, 0)
+
+[autoload]
+
+DropdownScrollGuard="*res://system/ui/dropdown_scroll_guard.gd"
 
 [display]
 

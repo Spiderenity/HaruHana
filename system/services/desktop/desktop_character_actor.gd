@@ -1852,7 +1852,11 @@ func show_speech(
 	if speech_bubble_window == null:
 		return
 
-	var source_text: String = CharacterSpeechPolicy.apply(text.strip_edges(), character_id, str(get_meta("preferences_pack", "")))
+	var spoken := DialogueOutput.desktop_line(text)
+	if spoken.is_empty():
+		return
+	initial_mood = str(spoken.get("mood", initial_mood))
+	var source_text: String = CharacterSpeechPolicy.apply(str(spoken["text"]), character_id, str(get_meta("preferences_pack", "")))
 
 	if source_text.is_empty():
 		return

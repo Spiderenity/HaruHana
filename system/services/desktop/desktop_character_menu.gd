@@ -396,18 +396,7 @@ func _create_window() -> void:
 	_apply_appearance(true)
 
 func _get_menu_intro() -> String:
-	var character_id: String = _get_character_id()
-	var user_name: String = UserProfileSettingsScript.get_user_name()
-	if user_name.is_empty():
-		user_name = _l("user", "유저")
-	var character_line: String = CharacterProfilesScript.get_fallback_line(
-		character_id,
-		"menu",
-		{"{user_name}": user_name}
-	)
-	if not character_line.is_empty():
-		return character_line
-	return _l("Need anything?", "뭐 필요한 거 있어?")
+	return CharacterProfilesScript.get_default_ui_line(_get_character_id(), "menu")
 
 func _get_character_id() -> String:
 	if owner_actor == null:
@@ -557,7 +546,7 @@ func _rebuild_main_page(show_immediately: bool = true) -> void:
 		description_label.text = _default_page_description()
 	_set_header_revealed(show_immediately)
 
-	if _get_character_id() == "crt":
+	if _can_open_board():
 		var grid := GridContainer.new()
 		grid.columns = 3
 		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -971,8 +960,15 @@ func _restore_page_description() -> void:
 	description_label.text = value
 	_request_window_geometry_refresh()
 
+func _can_open_board() -> bool:
+	if owner_actor == null:
+		return false
+	if owner_actor.get_desktop_slot_index() == 0:
+		return true
+	return owner_actor.is_inside_tree() and owner_actor.get_tree().get_nodes_in_group(&"desktop_character_actors").size() == 1
+
 func _on_tab_pressed(tab_name: String) -> void:
-	if _get_character_id() != "crt":
+	if not _can_open_board():
 		return
 	hide_menu()
 	tab_requested.emit(tab_name)

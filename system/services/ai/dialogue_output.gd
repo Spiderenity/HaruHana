@@ -3,6 +3,43 @@ class_name DialogueOutput
 
 const MOODS := "neutral|happy|amused|smug|curious|surprised|annoyed|angry|worried|sad|embarrassed|tired|flustered(?:_worried|_surprised|_annoyed)?|eyes_open|eyes_half|eyes_closed"
 
+static func desktop_line(value: Variant, depth: int = 0) -> Dictionary:
+	if depth > 3:
+		return {}
+	if value is Dictionary:
+		var nested := desktop_line(value.get("text", value.get("reply", null)), depth + 1)
+		if nested.is_empty():
+			return {}
+		var mood := str(value.get("mood", "")).strip_edges().to_lower()
+		var valid_mood := RegEx.new()
+		valid_mood.compile("^(?:" + MOODS + ")$")
+		if valid_mood.search(mood) != null:
+			nested["mood"] = mood
+		return nested
+	if not value is String:
+		return {}
+	var text := str(value).strip_edges()
+	if text.begins_with("```"):
+		var newline := text.find("\n")
+		if newline < 0 or not text.ends_with("```"):
+			return {}
+		text = text.substr(newline + 1).trim_suffix("```").strip_edges()
+	if text.begins_with("{") or text.begins_with("["):
+		var parser := JSON.new()
+		if parser.parse(text) == OK and parser.data is Dictionary:
+			return desktop_line(parser.data, depth + 1)
+		# Preserve valid inline expression controls, but never display broken wrappers.
+		if text.begins_with("{") or text.contains('"text"') or text.contains('"mood"'):
+			return {}
+	text = clean_text(text, true)
+	return {} if text.is_empty() else {"text": text}
+
+static func desktop_text(value: Variant) -> String:
+	var line := desktop_line(value)
+	if line.is_empty():
+		return ""
+	return ("(" + str(line["mood"]) + ")" if line.has("mood") else "") + str(line["text"])
+
 static func rules(language: String, inline_controls: bool = false) -> String:
 	var language_rule := "모든 발화는 자연스러운 한국어로만 쓴다. 영어·중국어 문장으로 바꾸지 않는다. 고유명사와 필요한 코드만 원어를 허용한다." if language == "ko" else "Write every spoken line in " + language + "."
 	return language_rule + "\n" + (

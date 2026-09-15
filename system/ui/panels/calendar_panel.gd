@@ -60,6 +60,7 @@ const REMINDER_LABELS: Array[String] = [
 ]
 
 var schedules: Array[Dictionary] = []
+var character_birthdays: Array[Dictionary] = []
 
 var display_year: int = 1970
 var display_month: int = 1
@@ -132,6 +133,32 @@ func _ready() -> void:
 	refresh_all()
 	apply_language()
 	apply_appearance()
+	visibility_changed.connect(_refresh_when_visible)
+	get_window().visibility_changed.connect(_refresh_when_visible)
+
+func _refresh_when_visible() -> void:
+	if is_visible_in_tree() and get_window().visible:
+		refresh_all()
+
+static func birthday_for_profile(character_id: String, profile: Dictionary, language: String = "ko") -> Dictionary:
+	var birthday: Variant = profile.get("birthday", {})
+	if not birthday is Dictionary:
+		return {}
+	var month := int(birthday.get("month", 0))
+	var day := int(birthday.get("day", 0))
+	var month_lengths := [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+	if month < 1 or month > 12 or day < 1 or day > month_lengths[month - 1]:
+		return {}
+	var character_name := str(profile.get("display_name", character_id))
+	return {"id": "character_birthday:" + character_id, "title": character_name + ("의 생일" if language == "ko" else "'s birthday"), "repeat": "yearly", "month": month, "day": day, "enabled": true}
+
+func _load_character_birthdays() -> void:
+	character_birthdays.clear()
+	var pack_id := CharacterProfiles.get_current_pack()
+	for character_id in CharacterProfiles.get_pack_character_ids(pack_id):
+		var birthday := birthday_for_profile(character_id, CharacterProfiles.load_profile(character_id, pack_id), AppLanguageScript.get_language())
+		if not birthday.is_empty():
+			character_birthdays.append(birthday)
 
 func _l(english: String, korean: String) -> String:
 	return AppLanguageScript.text(english, korean)
@@ -866,6 +893,7 @@ func _make_calendar_day_box(color: Color) -> StyleBoxFlat:
 	return style
 
 func refresh_calendar() -> void:
+	_load_character_birthdays()
 	_refresh_calendar_jump_menus()
 
 	var days_in_month: int = (
@@ -991,11 +1019,27 @@ func refresh_selected_date_schedules() -> void:
 		]
 
 	var matching: Array[Dictionary] = []
+	var birthdays: Array[Dictionary] = []
+	for birthday in character_birthdays:
+		if ScheduleStoreScript.matches_date(birthday, display_year, display_month, selected_day):
+			birthdays.append(birthday)
+			var row := HBoxContainer.new()
+			row.custom_minimum_size.y = CONTROL_HEIGHT
+			var title := Label.new()
+			title.text = str(birthday["title"])
+			title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(title)
+			var note := Label.new()
+			note.text = _l("Yearly · Character birthday", "매년 · 캐릭터 생일")
+			note.add_theme_font_size_override("font_size", AppearanceSettingsScript.UI_FONT_SMALL)
+			note.add_theme_color_override("font_color", AppearanceSettingsScript.get_ui_color("muted"))
+			row.add_child(note)
+			selected_date_schedule_box.add_child(row)
 	for schedule: Dictionary in schedules:
 		if ScheduleStoreScript.matches_date(schedule, display_year, display_month, selected_day):
 			matching.append(schedule)
 
-	if matching.is_empty():
+	if matching.is_empty() and birthdays.is_empty():
 		var empty_label := Label.new()
 		empty_label.text = _l(
 			"No schedules for this day.",
@@ -1520,6 +1564,9 @@ func _shift_month(
 	refresh_selected_date_schedules()
 
 func _has_enabled_schedule_on_date(year: int, month: int, day: int) -> bool:
+	for birthday in character_birthdays:
+		if ScheduleStoreScript.matches_date(birthday, year, month, day):
+			return true
 	for schedule: Dictionary in schedules:
 		if ScheduleStoreScript.matches_date(schedule, year, month, day):
 			return true

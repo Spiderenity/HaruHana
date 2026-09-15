@@ -82,6 +82,26 @@ func run() -> void:
 	var reset_crt := manager.get_actor("crt").get_desktop_pet_rect()
 	var reset_chip := manager.get_actor("chip").get_desktop_pet_rect()
 	check(reset_crt.position.x >= reset_chip.end.x, "cold start without saved monitor reserves room for both characters")
+	var primary := manager.get_actor("crt")
+	var secondary := manager.get_actor("chip")
+	primary.configure_character_id("custom_primary")
+	check(primary.character_menu._can_open_board(), "custom primary can open board")
+	check(not secondary.character_menu._can_open_board(), "secondary has no board icons when primary is present")
+	primary.configure_character_id("crt")
+	manager.clear_spawned_characters()
+	await process_frame
+	var solo := manager.spawn_character("chip", 1, manager.get_current_pack_settings(manager.load_settings())) as DesktopCharacterActor
+	await create_timer(1.0).timeout
+	solo.configure_character_id("custom_solo")
+	var solo_menu := solo.character_menu
+	solo_menu._rebuild_main_page(true)
+	check(solo_menu._can_open_board() and solo_menu.content_host.get_child(0) is GridContainer and solo_menu.content_host.get_child(0).get_child_count() == 6, "solo custom character gets all six board icons")
+	var tab_requests: Array[String] = []
+	solo_menu.tab_requested.connect(func(tab: String) -> void: tab_requests.append(tab))
+	solo_menu._on_tab_pressed("Timer")
+	check(tab_requests == ["Timer"], "solo custom timer icon routes to board")
+	solo.show_speech('{"mood":"neutral","text":"타이머 시작할게요~♪"}', 5.0)
+	check(solo.speech_label.text == "타이머 시작할게요~♪", "visible speech label contains no serialized code")
 	settings.queue_free()
 	manager.queue_free()
 	await process_frame

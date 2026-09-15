@@ -64,6 +64,13 @@ const UI_KO: Dictionary = {
 	"Personality": "성격",
 	"One item per line": "한 줄에 하나",
 	"Voice": "말투",
+	"Default speech style": "기본 말투",
+	"Auto": "자동",
+	"Casual": "반말",
+	"Polite": "존댓말",
+	"Menu greeting": "메뉴 첫마디",
+	"Farewell": "종료 인사",
+	"Leave blank to follow the speech style": "비워 두면 기본 말투에 맞춰 사용합니다",
 	"Speech style and sentence habits": "말투와 문장 습관",
 	"Voice · avoid": "피해야 할 말투",
 	"Behavior": "행동 패턴",
@@ -494,6 +501,10 @@ func _apply_interface_language(force: bool) -> void:
 		return
 
 	_apply_language_to_node(self)
+	if manifest_profile_controls.has("voice_register"):
+		var register_labels := ["Auto", "Casual", "Polite"]
+		for index in range(register_labels.size()):
+			manifest_profile_controls["voice_register"].set_item_text(index, _l(register_labels[index]))
 
 	if creator_window != null:
 		creator_window.title = _l("Character Creator")
@@ -1392,6 +1403,19 @@ func _build_profile_tab() -> Control:
 	manifest_profile_controls["voice_casual"] = _add_text_field(
 		root, "Voice *", "Speech style and sentence habits · e.g. short formal sentences", 84
 	)
+	var register_row := _make_settings_row("Default speech style")
+	root.add_child(register_row)
+	var register_selector := OptionButton.new()
+	register_selector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for label: String in ["Auto", "Casual", "Polite"]:
+		register_selector.add_item(_l(label))
+	register_selector.item_selected.connect(_mark_dirty_int)
+	register_row.add_child(register_selector)
+	manifest_profile_controls["voice_register"] = register_selector
+	manifest_profile_controls["menu_greeting"] = _add_line_field(root, "Menu greeting", "Leave blank to follow the speech style")
+	manifest_profile_controls["farewell"] = _add_line_field(root, "Farewell", "Leave blank to follow the speech style")
+	advanced_profile_rows.append(manifest_profile_controls["menu_greeting"].get_parent() as Control)
+	advanced_profile_rows.append(manifest_profile_controls["farewell"].get_parent() as Control)
 	manifest_profile_controls["user_role"] = _add_line_field(
 		root, "User role", "How this character sees the user · e.g. roommate, captain"
 	)
@@ -2456,6 +2480,11 @@ func _refresh_manifest_form() -> void:
 	manifest_profile_controls["core_personality"].text = _array_to_text(profile.get("core_personality", []))
 	var voice: Dictionary = profile.get("voice", {})
 	manifest_profile_controls["voice_casual"].text = str(voice.get("casual", ""))
+	var register_index := ["auto", "casual", "polite"].find(str(voice.get("register", "auto")))
+	manifest_profile_controls["voice_register"].select(maxi(0, register_index))
+	var default_lines: Dictionary = profile.get("default_lines", {})
+	manifest_profile_controls["menu_greeting"].text = str(default_lines.get("menu", ""))
+	manifest_profile_controls["farewell"].text = str(default_lines.get("exit", ""))
 	manifest_profile_controls["voice_avoid"].text = _array_to_text(voice.get("avoid", []))
 	manifest_profile_controls["behavior_patterns"].text = _array_to_text(profile.get("behavior_patterns", []))
 	manifest_profile_controls["mundane_details"].text = _array_to_text(profile.get("mundane_details", []))
@@ -2552,7 +2581,12 @@ func _commit_manifest_form() -> bool:
 	}
 	profile["appearance"] = {"summary": str(manifest_profile_controls["appearance"].text)}
 	profile["core_personality"] = _text_to_array(str(manifest_profile_controls["core_personality"].text))
+	profile["default_lines"] = {
+		"menu": str(manifest_profile_controls["menu_greeting"].text).strip_edges(),
+		"exit": str(manifest_profile_controls["farewell"].text).strip_edges(),
+	}
 	profile["voice"] = {
+		"register": ["auto", "casual", "polite"][manifest_profile_controls["voice_register"].selected],
 		"casual": str(manifest_profile_controls["voice_casual"].text),
 		"avoid": _text_to_array(str(manifest_profile_controls["voice_avoid"].text)),
 	}

@@ -711,6 +711,8 @@ func get_focus_session_fallback_bundle(
 		)
 	)
 
+	fallback_dialogue["_polite_defaults"] = CharacterProfiles.uses_polite_speech(CharacterProfiles.load_profile(clean_character_id))
+
 	var pause_default: String = (
 		"\"" + clean_task_name + "\" 일시정지."
 		if _dialogue_is_korean()
@@ -866,7 +868,7 @@ func _build_specific_fallback(
 		)
 
 		if not lines.is_empty():
-			var result: String = str(
+			var result: String = DialogueOutput.desktop_text(
 				lines[
 					randi_range(
 						0,
@@ -894,4 +896,14 @@ func _build_specific_fallback(
 			if not result.is_empty():
 				return result
 
+	if _dialogue_is_korean() and bool(fallback_dialogue.get("_polite_defaults", false)):
+		var polite_lines := {
+			"timer_start": "집중을 시작할게요.", "timer_halfway": "절반 남았어요.",
+			"timer_ending": "5분 남았어요.", "timer_pause": "잠시 멈췄어요.",
+			"timer_resume": "다시 이어가 볼까요?", "timer_stop": "오늘은 여기까지 마무리할게요.",
+			"timer_complete": "수고하셨어요. 집중 시간이 끝났어요.",
+			"pomodoro_break_prompt": "잠깐 쉬실까요?", "pomodoro_break_start": "잠시 쉬어 가세요.",
+			"pomodoro_break_complete": "휴식 시간이 끝났어요.", "pomodoro_cycle_complete": "한 사이클을 마치셨어요. 수고하셨어요."
+		}
+		return str(polite_lines.get(key, default_text))
 	return default_text
