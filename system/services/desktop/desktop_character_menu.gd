@@ -31,7 +31,6 @@ const MENU_ICON_FILENAMES: Dictionary = {
 	"Chat": "menu_chat.png",
 	"Timer": "menu_timer.png",
 	"Calendar": "menu_calendar.png",
-	"Week": "menu_week.png",
 	"Memo": "menu_memo.png",
 	"Settings": "menu_settings.png",
 }
@@ -40,7 +39,6 @@ const TAB_ITEMS: Array[Dictionary] = [
 	{"tab": "Chat", "en": "Chat", "ko": "채팅"},
 	{"tab": "Timer", "en": "Timer", "ko": "타이머"},
 	{"tab": "Calendar", "en": "Calendar", "ko": "캘린더"},
-	{"tab": "Week", "en": "Week", "ko": "주간"},
 	{"tab": "Memo", "en": "Memo", "ko": "메모"},
 	{"tab": "Settings", "en": "Settings", "ko": "설정"},
 ]
@@ -547,14 +545,19 @@ func _rebuild_main_page(show_immediately: bool = true) -> void:
 	_set_header_revealed(show_immediately)
 
 	if _can_open_board():
-		var grid := GridContainer.new()
-		grid.columns = 3
-		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		grid.add_theme_constant_override("h_separation", 8)
-		grid.add_theme_constant_override("v_separation", 8)
-		content_host.add_child(grid)
+		var rows := VBoxContainer.new()
+		rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rows.add_theme_constant_override("separation", 8)
+		content_host.add_child(rows)
+		var row: HBoxContainer
 
-		for item: Dictionary in TAB_ITEMS:
+		for index in range(TAB_ITEMS.size()):
+			if index % 3 == 0:
+				row = HBoxContainer.new()
+				row.alignment = BoxContainer.ALIGNMENT_CENTER
+				row.add_theme_constant_override("separation", 8)
+				rows.add_child(row)
+			var item: Dictionary = TAB_ITEMS[index]
 			var tab_name: String = str(item.get("tab", ""))
 			var label: String = _l(str(item.get("en", tab_name)), str(item.get("ko", tab_name)))
 			var button: Button = _make_icon_button(
@@ -563,7 +566,8 @@ func _rebuild_main_page(show_immediately: bool = true) -> void:
 				label
 			)
 			button.pressed.connect(_on_tab_pressed.bind(tab_name))
-			grid.add_child(button)
+			button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			row.add_child(button)
 
 	var talk_label: String = _l("Talk", "대화")
 	var talk_button: Button = _make_wide_button(talk_label, _talk_hover_description("talk"))

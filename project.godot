@@ -3,7 +3,7 @@ config_version=5
 [application]
 
 config/name="HaruHana"
-config/version="0.1.8-beta"
+config/version="0.1.9-beta"
 run/main_scene="res://system/scenes/launch_router.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://assets/icon/icon.svg"

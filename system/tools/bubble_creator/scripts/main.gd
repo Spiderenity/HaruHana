@@ -15,7 +15,6 @@ const MENU_PARTS: Array[String] = [
 	"menu_chat",
 	"menu_timer",
 	"menu_calendar",
-	"menu_week",
 	"menu_memo",
 	"menu_settings",
 ]
@@ -23,7 +22,6 @@ const MENU_LABELS: Dictionary = {
 	"menu_chat": "Chat",
 	"menu_timer": "Timer",
 	"menu_calendar": "Calendar",
-	"menu_week": "Week",
 	"menu_memo": "Memo",
 	"menu_settings": "Settings",
 }
@@ -68,12 +66,11 @@ const KO: Dictionary = {
 	"MENU · Menu buttons":"MENU · 메뉴 버튼",
 	"Menu buttons":"메뉴 버튼",
 	"All required menu button images are uploaded.":"필수 메뉴 버튼 이미지가 모두 업로드되었습니다.",
-	"Advanced mode requires all six menu button images.":"고급 모드에서는 메뉴 버튼 이미지 6개가 모두 필요합니다.",
+	"Advanced mode requires all five menu button images.":"고급 모드에서는 메뉴 버튼 이미지 5개가 모두 필요합니다.",
 	"56×48 PNG":"56×48 PNG",
 	"Chat":"채팅",
 	"Timer":"타이머",
 	"Calendar":"캘린더",
-	"Week":"주간",
 	"Memo":"메모",
 	"Settings":"설정",
 	"Could not open that bubble package.":"말풍선 패키지를 열 수 없습니다.",
@@ -463,17 +460,22 @@ func _sprite_preview() -> Control:
 	menu_content.add_theme_constant_override("separation", 6)
 	preview_content.add_child(menu_content)
 
-	menu_preview_section = GridContainer.new()
-	(menu_preview_section as GridContainer).columns = 3
+	menu_preview_section = VBoxContainer.new()
 	menu_preview_section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	menu_preview_section.add_theme_constant_override("h_separation", 8)
-	menu_preview_section.add_theme_constant_override("v_separation", 8)
+	menu_preview_section.add_theme_constant_override("separation", 8)
 	menu_content.add_child(menu_preview_section)
 
-	for part: String in MENU_PARTS:
+	var row: HBoxContainer
+	for index in range(MENU_PARTS.size()):
+		if index % 3 == 0:
+			row = HBoxContainer.new()
+			row.alignment = BoxContainer.ALIGNMENT_CENTER
+			row.add_theme_constant_override("separation", 8)
+			menu_preview_section.add_child(row)
+		var part: String = MENU_PARTS[index]
 		var button := Button.new()
 		button.custom_minimum_size = Vector2(56, 48)
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		button.expand_icon = false
@@ -482,7 +484,7 @@ func _sprite_preview() -> Control:
 		button.text = _l(str(MENU_LABELS.get(part, part)))
 		button.set_meta("menu_text_fallback", true)
 		_style_preview_menu_button(button)
-		menu_preview_section.add_child(button)
+		row.add_child(button)
 		menu_preview_images[part] = button
 
 	preview_talk_button = Button.new()
@@ -1100,7 +1102,7 @@ func _summary() -> void:
 			menu_details.append("%s · %s" % [_l(str(MENU_LABELS.get(part, part))), _l("Uploaded") if uploaded else _l("Missing")])
 		_add_checklist_section(
 			_l("Menu buttons"),
-			_l("All required menu button images are uploaded.") if menu_missing.is_empty() else _l("Advanced mode requires all six menu button images."),
+			_l("All required menu button images are uploaded.") if menu_missing.is_empty() else _l("Advanced mode requires all five menu button images."),
 			menu_details,
 			menu_missing.is_empty()
 		)

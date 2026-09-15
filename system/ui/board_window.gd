@@ -202,8 +202,6 @@ func _localized_tab_name(tab_name: String) -> String:
 			return _l("Timer", "타이머")
 		"Calendar":
 			return _l("Calendar", "캘린더")
-		"Week":
-			return _l("Week", "주간")
 		"Memo":
 			return _l("Memo", "메모")
 		"Settings":

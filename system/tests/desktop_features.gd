@@ -95,7 +95,8 @@ func run() -> void:
 	solo.configure_character_id("custom_solo")
 	var solo_menu := solo.character_menu
 	solo_menu._rebuild_main_page(true)
-	check(solo_menu._can_open_board() and solo_menu.content_host.get_child(0) is GridContainer and solo_menu.content_host.get_child(0).get_child_count() == 6, "solo custom character gets all six board icons")
+	var menu_rows := solo_menu.content_host.get_child(0)
+	check(solo_menu._can_open_board() and menu_rows is VBoxContainer and menu_rows.get_child_count() == 2 and menu_rows.get_child(0).get_child_count() == 3 and menu_rows.get_child(1).get_child_count() == 2, "solo character gets five board icons in centered 3 + 2 rows")
 	var tab_requests: Array[String] = []
 	solo_menu.tab_requested.connect(func(tab: String) -> void: tab_requests.append(tab))
 	solo_menu._on_tab_pressed("Timer")
