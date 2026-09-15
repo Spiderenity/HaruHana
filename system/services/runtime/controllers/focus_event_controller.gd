@@ -213,7 +213,14 @@ func _on_focus_session_completed(
 	retained_pomodoro_reaction_bundle = active_focus_reaction_bundle.duplicate(true)
 
 	_record_focus_activity(task_name, planned_minutes, "completed")
-	DesktopCharacterProgress.add_achievement_minutes(planned_minutes)
+	if not active_focus_session.is_empty():
+		var rewarded_character := retained_pomodoro_character_id
+		if rewarded_character.is_empty():
+			for character_id in character_manager.get_slot_character_ids():
+				if not character_id.is_empty():
+					rewarded_character = character_id
+					break
+		DesktopCharacterProgress.reward_focus_completion(rewarded_character, planned_minutes)
 	_clear_active_focus_session()
 
 func _on_focus_session_milestone(

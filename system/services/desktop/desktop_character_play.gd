@@ -58,6 +58,7 @@ var profile: Dictionary = {}
 var play_expression_map: Dictionary = {}
 var zone_expression_maps: Dictionary = {}
 var fluster_moods: Array[String] = []
+var dialogue_bags: Dictionary = {}
 
 var zone_effects: Dictionary = {}
 
@@ -600,6 +601,8 @@ func handle_pet_stroke(
 	)
 
 	pet_reaction_index += 1
+	if pet_play_multiplier > 0.0 and not dialogue.is_empty() and character_actor != null and bool(character_actor.get_meta("progress_rewards_enabled", false)):
+		DesktopCharacterProgress.reward_activity(character_id, "pet")
 
 	if not dialogue.is_empty():
 		has_pet_reacted = true
@@ -931,16 +934,6 @@ func _get_effective_play_mood(
 
 	if not mapped.is_empty():
 		return mapped
-
-	var fallback: String = str(
-		selected_map.get(
-			"embarrassed",
-			""
-		)
-	).strip_edges().to_lower()
-
-	if not fallback.is_empty():
-		return fallback
 
 	return requested
 
@@ -1302,6 +1295,9 @@ func _pick_pet_dialogue_stage(
 	if lines.is_empty():
 		return {}
 
+	if not bool(profile.get("staged_pet_lines", false)):
+		return _pick_balanced_line(lines, "pet:" + zone)
+
 	var stage_count: int = maxi(
 		pet_reaction_seconds.size(),
 		1
@@ -1344,29 +1340,7 @@ func _pick_pet_dialogue_stage(
 		band_start = 0
 		band_end = lines.size() - 1
 
-	var value: Variant = lines[
-		randi_range(
-			band_start,
-			band_end
-		)
-	]
-
-	if value is Dictionary:
-		return (
-			value as Dictionary
-		).duplicate(
-			true
-		)
-
-	if value is String:
-		return {
-			"text": str(
-				value
-			),
-			"mood": "neutral"
-		}
-
-	return {}
+	return _pick_balanced_line(lines.slice(band_start, band_end + 1), "pet:" + zone + ":" + str(band_index))
 
 func _pick_local_dialogue(
 	event_kind: String,
@@ -1442,29 +1416,30 @@ func _pick_local_dialogue(
 	if candidates.is_empty():
 		return {}
 
-	var value: Variant = candidates[
-		randi_range(
-			0,
-			candidates.size() - 1
-		)
-	]
+	return _pick_balanced_line(candidates, event_kind + ":" + zone)
 
+func _pick_balanced_line(lines: Array, key: String) -> Dictionary:
+	if lines.is_empty():
+		return {}
+	var signature := JSON.stringify(lines)
+	var bag: Dictionary = dialogue_bags.get(key, {})
+	if bag.get("signature", "") != signature:
+		bag = {"signature": signature, "remaining": [], "last": -1}
+	var remaining: Array = bag["remaining"]
+	if remaining.is_empty():
+		remaining.assign(range(lines.size()))
+		remaining.shuffle()
+		if remaining.size() > 1 and remaining.back() == bag["last"]:
+			var swap: Variant = remaining[0]
+			remaining[0] = remaining.back()
+			remaining[remaining.size() - 1] = swap
+	var index: int = int(remaining.pop_back())
+	bag["last"] = index
+	dialogue_bags[key] = bag
+	var value: Variant = lines[index]
 	if value is Dictionary:
-		return (
-			value as Dictionary
-		).duplicate(
-			true
-		)
-
-	if value is String:
-		return {
-			"text": str(
-				value
-			),
-			"mood": "neutral"
-		}
-
-	return {}
+		return value.duplicate(true)
+	return {"text": value, "mood": "neutral"} if value is String else {}
 
 func _pick_fluster_mood() -> String:
 	if fluster_moods.is_empty():
@@ -1524,6 +1499,9 @@ func _load_profile() -> void:
 			]
 
 	profile = merged
+	if not profile.has("staged_pet_lines"):
+		profile["staged_pet_lines"] = CharacterProfiles.get_current_pack() == "crt_chip"
+	dialogue_bags.clear()
 
 	play_threshold = maxf(
 		1.0,

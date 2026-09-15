@@ -634,7 +634,7 @@ func _build_menu_response_bundle_prompt(request: Dictionary) -> String:
 		+ "Menu talk never changes friendship. Do not imply that compliments or repeated clicks earn relationship progress. "
 		+ "Use the supplied friendship and achievement levels to change tone exactly as described by the profile and character guide. "
 		+ "For ask:week, answer directly about this week's observed focus/activity. "
-		+ "Achievement level 0 means under 30 focused minutes this week; level 1 means 30-89; level 2 means 90-179; level 3 means 180 or more. "
+		+ "Achievement levels represent cumulative activity points (thresholds 3000, 9000, 18000), not this week's focus minutes. Never infer weekly minutes from a level. "
 		+ "Do not invent exact minutes or claim specific completed tasks unless they are explicitly present in context. "
 		+ "Do not describe achievement with vague UI metaphors such as things moving, empty spaces, filling up, bars, or being full. "
 		+ "For ask:self, directly answer the implied question 'Who are you?' using only facts in the character profile. "

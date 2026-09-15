@@ -101,7 +101,7 @@ func _build_interactive_progress_context(
 		characters[character_id] = DesktopCharacterProgress.get_context(character_id)
 	return {
 		"characters": characters,
-		"weekly_achievement_minutes": DesktopCharacterProgress.get_achievement_minutes(),
+		"weekly_achievement_minutes": DesktopCharacterProgress.get_weekly_focus_minutes(),
 		"weekly_achievement_level": DesktopCharacterProgress.get_achievement_level(),
 	}
 
@@ -221,7 +221,7 @@ func _on_character_interactive_question_answered(
 	var event_id: int = orchestrator.active_id()
 	var gain: int = clampi(int(answer.get("friendship_gain", 0)), 0, 1)
 	if gain > 0:
-		DesktopCharacterProgress.add_friendship(character_id, 1)
+		DesktopCharacterProgress.reward_activity(character_id, "question")
 	if debug_tools != null:
 		debug_tools.show_progress_for_character(
 			character_id

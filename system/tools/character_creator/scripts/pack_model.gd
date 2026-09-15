@@ -25,6 +25,7 @@ const NATURAL_PRIMARY: Array[String] = [
 
 const PRESET_SLOT_ALIASES: Dictionary = {
 	"neutral": "eyes_open",
+	"surprised": "eyes_open",
 	"annoyed": "angry",
 	"tired": "sad",
 	"flustered_surprised": "surprised",

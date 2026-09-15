@@ -1283,6 +1283,7 @@ func _get_menu_talk_reaction(action: String, detail: String) -> Dictionary:
 	var progress: Dictionary = DesktopCharacterProgressScript.get_context(character_id)
 	var friendship_level: int = int(progress.get("friendship_level", 0))
 	var achievement_level: int = int(progress.get("achievement_level", 0))
+	var weekly_minutes: int = int(progress.get("weekly_focus_minutes", 0))
 	var text: String = ""
 	var mood: String = "neutral"
 
@@ -1298,17 +1299,17 @@ func _get_menu_talk_reaction(action: String, detail: String) -> Dictionary:
 		"ask":
 			match detail:
 				"week":
-					if achievement_level >= 3:
+					if weekly_minutes >= 180:
 						text = AppLanguageScript.text(
 							"You've already focused for more than three hours this week. You worked pretty hard.",
 							"이번 주 집중 시간, 벌써 3시간 넘겼네. 꽤 열심히 했어."
 						)
-					elif achievement_level >= 2:
+					elif weekly_minutes >= 90:
 						text = AppLanguageScript.text(
 							"You've passed 90 minutes of focus this week. You worked pretty hard this week.",
 							"이번 주 집중 시간은 90분 넘겼네. 이번 주는 꽤 열심히 했어."
 						)
-					elif achievement_level >= 1:
+					elif weekly_minutes >= 30:
 						text = AppLanguageScript.text(
 							"You've passed 30 minutes of focus this week. So you haven't been doing nothing.",
 							"이번 주 집중 시간은 30분 넘겼네. 아주 놀고만 있진 않았어."

@@ -85,6 +85,7 @@ func _on_startup_boot_started() -> void:
 		if character_id.is_empty():
 			continue
 		planned_ids.append(character_id)
+		DesktopCharacterProgress.reward_activity(character_id, "attendance")
 		if planned_ids.size() >= 2:
 			break
 

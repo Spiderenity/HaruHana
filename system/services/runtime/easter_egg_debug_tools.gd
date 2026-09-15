@@ -256,10 +256,10 @@ func show_progress_for_character(
 			)
 
 	var achievement: int = (
-		DesktopCharacterProgressScript.get_achievement_minutes()
+		DesktopCharacterProgressScript.get_achievement_points()
 	)
 	var achievement_actual: int = (
-		DesktopCharacterProgressScript.get_actual_achievement_minutes()
+		DesktopCharacterProgressScript.get_actual_achievement_points()
 	)
 	var achievement_level: int = (
 		DesktopCharacterProgressScript.get_achievement_level()
@@ -267,13 +267,13 @@ func show_progress_for_character(
 	var achievement_text: String = (
 		"Achievement: "
 		+ str(achievement)
-		+ " min this week"
+		+ " points"
 	)
 	if DesktopCharacterProgressScript.has_debug_achievement_override():
 		achievement_text += (
 			" (debug override; actual "
 			+ str(achievement_actual)
-			+ " min)"
+			+ " points)"
 		)
 
 	var text: String = friendship_text + "\n" + achievement_text

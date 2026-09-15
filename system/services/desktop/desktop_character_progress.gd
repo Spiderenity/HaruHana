@@ -2,9 +2,64 @@ extends RefCounted
 class_name DesktopCharacterProgress
 
 const SAVE_PATH: String = "user://desktop_character_progress.json"
-const DATA_VERSION: int = 2
-const FRIENDSHIP_LEVEL_THRESHOLDS: Array[int] = [5, 15, 35]
-const ACHIEVEMENT_LEVEL_THRESHOLDS: Array[int] = [30, 90, 180]
+const DATA_VERSION: int = 3
+const FRIENDSHIP_LEVEL_THRESHOLDS: Array[int] = [1000, 3000, 7000]
+const ACHIEVEMENT_LEVEL_THRESHOLDS: Array[int] = [3000, 9000, 18000]
+
+const ACTIVITY_REWARDS: Dictionary = {
+	"pet": {"points": 20, "limit": 200, "interval": 30},
+	"chat": {"points": 60, "limit": 600, "interval": 20},
+	"attendance": {"points": 100, "limit": 100, "interval": 0},
+	"question": {"points": 100, "limit": 300, "interval": 0},
+}
+
+static func get_weekly_focus_minutes() -> int:
+	return int(_load_state()["achievement"].get("minutes", 0))
+
+static func reward_activity(character_id: String, activity: String, timestamp: int = -1) -> Dictionary:
+	var clean_id := _normalize_character_id(character_id)
+	if clean_id.is_empty() or not ACTIVITY_REWARDS.has(activity):
+		return {"friendship": 0, "achievement": 0}
+	var now := int(Time.get_unix_time_from_system()) if timestamp < 0 else timestamp
+	var date := Time.get_date_string_from_system() if timestamp < 0 else Time.get_date_string_from_unix_time(now)
+	var state := _load_state()
+	var daily: Dictionary = state.get("daily_rewards", {})
+	if daily.get("date", "") != date:
+		daily = {"date": date, "entries": {}, "attendance_achievement": false}
+	var entries: Dictionary = daily.get("entries", {})
+	var key := clean_id + ":" + activity
+	var entry: Dictionary = entries.get(key, {"earned": 0, "last": -1})
+	var rule: Dictionary = ACTIVITY_REWARDS[activity]
+	if int(entry["last"]) >= 0 and now - int(entry["last"]) < int(rule["interval"]):
+		return {"friendship": 0, "achievement": 0}
+	var gain := mini(int(rule["points"]), maxi(0, int(rule["limit"]) - int(entry["earned"])))
+	if gain == 0:
+		return {"friendship": 0, "achievement": 0}
+	entry["earned"] = int(entry["earned"]) + gain
+	entry["last"] = now
+	entries[key] = entry
+	daily["entries"] = entries
+	var friendship: Dictionary = state["friendship"]
+	friendship[clean_id] = int(friendship.get(clean_id, 0)) + gain
+	var achievement_gain := 0
+	if activity == "attendance" and not bool(daily.get("attendance_achievement", false)):
+		achievement_gain = 150
+		state["achievement"]["points"] += achievement_gain
+		daily["attendance_achievement"] = true
+	state["daily_rewards"] = daily
+	_save_state(state)
+	return {"friendship": gain, "achievement": achievement_gain}
+
+static func reward_focus_completion(character_id: String, minutes: int) -> void:
+	if minutes <= 0:
+		return
+	var state := _load_state()
+	var clean_id := _normalize_character_id(character_id)
+	if not clean_id.is_empty():
+		state["friendship"][clean_id] = int(state["friendship"].get(clean_id, 0)) + minutes * 8
+	state["achievement"]["minutes"] += minutes
+	state["achievement"]["points"] += minutes * 100 + (100 if minutes >= 5 else 0)
+	_save_state(state)
 
 static func get_friendship(character_id: String) -> int:
 	var override_level: int = get_debug_friendship_level(character_id)
@@ -65,54 +120,54 @@ static func set_friendship_level(character_id: String, level: int) -> int:
 static func get_max_friendship_level() -> int:
 	return FRIENDSHIP_LEVEL_THRESHOLDS.size()
 
-static func get_achievement_minutes() -> int:
+static func get_achievement_points() -> int:
 	var override_level: int = get_debug_achievement_level()
 	if override_level >= 0:
 		return _value_for_level(override_level, ACHIEVEMENT_LEVEL_THRESHOLDS)
-	return get_actual_achievement_minutes()
+	return get_actual_achievement_points()
 
-static func get_actual_achievement_minutes() -> int:
+static func get_actual_achievement_points() -> int:
 	var state: Dictionary = _load_state()
 	var achievement: Dictionary = state.get("achievement", {}) as Dictionary
-	return maxi(0, int(achievement.get("minutes", 0)))
+	return maxi(0, int(achievement.get("points", 0)))
 
-static func set_achievement_minutes(minutes: int) -> int:
+static func set_achievement_points(points: int) -> int:
 	var state: Dictionary = _load_state()
 	var achievement: Dictionary = state.get("achievement", {}) as Dictionary
-	var clean_minutes: int = maxi(0, minutes)
+	var clean_points: int = maxi(0, points)
 	achievement["week_key"] = _current_week_key()
-	achievement["minutes"] = clean_minutes
+	achievement["points"] = clean_points
 	state["achievement"] = achievement
 	_save_state(state)
-	return clean_minutes
+	return clean_points
 
-static func add_achievement_minutes(minutes: int) -> int:
-	if minutes <= 0:
-		return get_actual_achievement_minutes()
-	return set_achievement_minutes(
-		get_actual_achievement_minutes() + minutes
+static func add_achievement_points(points: int) -> int:
+	if points <= 0:
+		return get_actual_achievement_points()
+	return set_achievement_points(
+		get_actual_achievement_points() + points
 	)
 
 static func reset_achievement() -> int:
-	return set_achievement_minutes(0)
+	return set_achievement_points(0)
 
 static func get_achievement_level() -> int:
 	var override_level: int = get_debug_achievement_level()
 	if override_level >= 0:
 		return override_level
 	return _level_for_value(
-		get_actual_achievement_minutes(),
+		get_actual_achievement_points(),
 		ACHIEVEMENT_LEVEL_THRESHOLDS
 	)
 
 static func get_actual_achievement_level() -> int:
 	return _level_for_value(
-		get_actual_achievement_minutes(),
+		get_actual_achievement_points(),
 		ACHIEVEMENT_LEVEL_THRESHOLDS
 	)
 
 static func set_achievement_level(level: int) -> int:
-	return set_achievement_minutes(
+	return set_achievement_points(
 		_value_for_level(level, ACHIEVEMENT_LEVEL_THRESHOLDS)
 	)
 
@@ -205,7 +260,7 @@ static func get_context(character_id: String) -> Dictionary:
 	)
 	var actual_achievement: int = maxi(
 		0,
-		int(achievement.get("minutes", 0))
+		int(achievement.get("points", 0))
 	)
 	var friendship_override: int = _get_debug_friendship_level_from_state(
 		state,
@@ -247,6 +302,7 @@ static func get_context(character_id: String) -> Dictionary:
 		),
 		"friendship_debug_override": friendship_override,
 		"achievement": achievement_value,
+		"weekly_focus_minutes": int(achievement.get("minutes", 0)),
 		"achievement_level": achievement_level,
 		"achievement_actual": actual_achievement,
 		"achievement_actual_level": _level_for_value(
@@ -260,9 +316,8 @@ static func get_context(character_id: String) -> Dictionary:
 	}
 
 static func _load_state() -> Dictionary:
-	var state: Dictionary = _sanitize_state(
-		JsonStore.load_dictionary(SAVE_PATH, _default_state())
-	)
+	var raw := JsonStore.load_dictionary(SAVE_PATH, _default_state())
+	var state: Dictionary = _sanitize_state(raw)
 	var achievement: Dictionary = state.get("achievement", {}) as Dictionary
 	var current_week: String = _current_week_key()
 	if str(achievement.get("week_key", "")) != current_week:
@@ -282,6 +337,7 @@ static func _default_state() -> Dictionary:
 		"achievement": {
 			"week_key": _current_week_key(),
 			"minutes": 0,
+			"points": 0,
 		},
 		"debug_overrides": _default_debug_overrides(),
 	}
@@ -346,6 +402,8 @@ static func _sanitize_state(raw: Dictionary) -> Dictionary:
 			else -1
 		)
 
+	achievement_out["points"] = maxi(0, int(achievement_raw.get("points", 0))) if achievement_raw is Dictionary else 0
+	state["daily_rewards"] = raw.get("daily_rewards", {}).duplicate(true) if raw.get("daily_rewards", {}) is Dictionary else {}
 	state["version"] = DATA_VERSION
 	state["friendship"] = friendship_out
 	state["achievement"] = achievement_out

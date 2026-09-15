@@ -705,6 +705,8 @@ func _on_chat_exchange_completed(
 	user_message: String,
 	character_response: String
 ) -> void:
+	if not user_message.strip_edges().is_empty() and not character_response.strip_edges().is_empty():
+		DesktopCharacterProgress.reward_activity(character_id, "chat")
 	interactive_controller.record_chat_activity(
 		character_id,
 		user_message,

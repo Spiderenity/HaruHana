@@ -1612,6 +1612,7 @@ func spawn_character(
 		return null
 
 	actor.set_meta("preferences_pack", pack_id)
+	actor.set_meta("progress_rewards_enabled", not manual_preview_mode)
 	actor.set_meta("remember_desktop_position", host_window_clickthrough_on_ready)
 	actor.configure_character_id(character_id)
 	actor.configure_desktop_slot(slot_index)
@@ -2660,4 +2661,3 @@ func save_settings(
 	settings: Dictionary
 ) -> Error:
 	return JsonStore.save_json(SETTINGS_PATH, settings)
-
