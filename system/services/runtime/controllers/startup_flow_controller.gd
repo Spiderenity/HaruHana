@@ -241,6 +241,11 @@ func _get_ai_boot_line(
 	speaker: String = ""
 ) -> Dictionary:
 
+	if desktop_pack_events != null:
+		var authored: Dictionary = desktop_pack_events.pick_boot_peer_line(speaker) if phase == "peer" else desktop_pack_events.pick_boot_line(speaker, phase)
+		if not authored.is_empty():
+			return authored
+
 	phase = (
 		phase.strip_edges()
 			.to_lower()

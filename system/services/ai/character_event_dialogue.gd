@@ -1508,11 +1508,7 @@ func _build_fallback_cast_exit_dialogue(
 
 	return {
 		"speaker": speaker,
-		"text": (
-			"또 봐."
-			if _dialogue_is_korean()
-			else "See you."
-		),
+		"text": CharacterProfiles.get_default_ui_line(speaker, "exit"),
 		"mood": DEFAULT_MOOD
 	}
 

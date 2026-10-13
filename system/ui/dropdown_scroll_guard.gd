@@ -12,9 +12,10 @@ func _watch_existing(node: Node) -> void:
 
 func _watch_node(node: Node) -> void:
 	if node is ScrollContainer:
-		_connect_scroll.call_deferred(node)
+		_connect_scroll.call_deferred(node.get_instance_id())
 
-func _connect_scroll(scroll: ScrollContainer) -> void:
+func _connect_scroll(instance_id: int) -> void:
+	var scroll := instance_from_id(instance_id) as ScrollContainer
 	if not is_instance_valid(scroll):
 		return
 	var close_dropdowns := _close_dropdowns.bind(scroll)

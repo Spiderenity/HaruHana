@@ -374,6 +374,7 @@ var desktop_character_runtime: Node = null
 var desktop_character_manager: DesktopCharacterManager = null
 var runtime_instance_coordinator: RuntimeInstanceCoordinator = null
 var desktop_characters_ready: bool = false
+var generation_groups: Dictionary = {}
 var preview_playback_token: int = 0
 var chat_color_icon_cache: Dictionary = {}
 
@@ -577,9 +578,9 @@ func _refresh_profile_mode_visibility() -> void:
 	if character_id_row != null:
 		character_id_row.visible = mode == "advanced"
 	if add_line_button != null:
-		add_line_button.visible = mode == "advanced" and not conversation_view
+		add_line_button.visible = true
 	if line_action_row != null:
-		line_action_row.visible = mode == "advanced" and not conversation_view
+		line_action_row.visible = true
 	if character_count_one_button != null:
 		character_count_one_button.button_pressed = model.characters.size() == 1
 	if character_count_two_button != null:
@@ -698,6 +699,8 @@ func _refresh_line_status_text() -> void:
 
 func _line_group_label(group_id: String) -> String:
 	match group_id:
+		"menu": return _l("Menu greeting", "메뉴 첫마디")
+		"exit": return _l("Farewell", "종료 인사")
 		"first_boot":
 			return _l("First boot")
 		"idle":
@@ -1359,7 +1362,8 @@ func _build_character_tab() -> Control:
 	_bind_localized_property(
 		desktop_note,
 		"text",
-		"Use the first desktop slot."
+		"Choose who appears first when this pack is first opened. Both characters remain selectable.",
+		"팩을 처음 열 때 먼저 표시할 캐릭터입니다. 두 캐릭터 모두 앱에서 선택할 수 있습니다."
 	)
 	desktop_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	desktop_note.add_theme_font_size_override("font_size", CreatorThemeScript.FONT_SMALL)
@@ -1524,6 +1528,14 @@ func _build_lines_tab() -> Control:
 	action_row.add_child(actions)
 	add_line_button = _toolbar_button("+ Line", _on_add_line)
 	actions.add_child(add_line_button)
+	var clear_group := Button.new()
+	_bind_localized_property(clear_group, "text", "Clear group", "현재 그룹 비우기")
+	clear_group.pressed.connect(_confirm_clear_lines.bind(false))
+	actions.add_child(clear_group)
+	var clear_all := Button.new()
+	_bind_localized_property(clear_all, "text", "Clear all dialogue", "모든 대사 비우기")
+	clear_all.pressed.connect(_confirm_clear_lines.bind(true))
+	actions.add_child(clear_all)
 
 	line_status = Label.new()
 	line_status.add_theme_font_size_override("font_size", CreatorThemeScript.FONT_SMALL)
@@ -2021,7 +2033,7 @@ func _refresh_save_checklist() -> void:
 				display_name,
 				_l("%d groups missing", "%d개 그룹이 비어 있음") % missing_group_count
 			])
-	if model.characters.size() == 2 and model.conversations.is_empty():
+	if bool(generation_groups.get("conversation", true)) and model.characters.size() == 2 and model.conversations.is_empty():
 		dialogue_details.append(_l("A two-character conversation has not been generated."))
 	if not dialogue_details.is_empty() and not ai_ready:
 		dialogue_details.push_front(_l("AI settings are missing"))
@@ -2581,10 +2593,25 @@ func _commit_manifest_form() -> bool:
 	}
 	profile["appearance"] = {"summary": str(manifest_profile_controls["appearance"].text)}
 	profile["core_personality"] = _text_to_array(str(manifest_profile_controls["core_personality"].text))
+	var previous_defaults: Dictionary = profile.get("default_lines", {}).duplicate(true)
 	profile["default_lines"] = {
 		"menu": str(manifest_profile_controls["menu_greeting"].text).strip_edges(),
 		"exit": str(manifest_profile_controls["farewell"].text).strip_edges(),
 	}
+	for key: String in ["menu", "exit"]:
+		if str(previous_defaults.get(key, "")) == str(profile["default_lines"][key]):
+			continue
+		var dialogue: Dictionary = character.get("dialogue", {})
+		var fallback: Dictionary = dialogue.get("fallback_dialogue", {})
+		var lines: Array = fallback.get(key, [])
+		if not lines.is_empty():
+			lines.remove_at(0)
+		var supplied: String = str(profile["default_lines"][key])
+		if not supplied.is_empty():
+			lines.push_front({"text": supplied, "mood": "neutral"})
+		fallback[key] = lines
+		dialogue["fallback_dialogue"] = fallback
+		character["dialogue"] = dialogue
 	profile["voice"] = {
 		"register": ["auto", "casual", "polite"][manifest_profile_controls["voice_register"].selected],
 		"casual": str(manifest_profile_controls["voice_casual"].text),
@@ -2710,14 +2737,23 @@ func _refresh_conversation_rows() -> void:
 		title_row.add_child(title)
 		var play_button: Button = _toolbar_button(
 			"Play",
-			_on_preview_conversation.bind(conversation.duplicate(true))
+			_on_preview_conversation.bind(conversation)
 		)
 		play_button.custom_minimum_size.x = 72.0
 		title_row.add_child(play_button)
+		var remove := Button.new()
+		remove.text = "×"
+		remove.pressed.connect(_delete_conversation.bind(conversation_index))
+		title_row.add_child(remove)
+		var add_turn := Button.new()
+		_bind_localized_property(add_turn, "text", "+ Turn", "+ 대사")
+		add_turn.pressed.connect(_add_conversation_turn.bind(conversation_index))
+		title_row.add_child(add_turn)
 		var turns_value: Variant = conversation.get("turns", [])
 		if not (turns_value is Array):
 			continue
-		for turn_value: Variant in turns_value as Array:
+		for turn_index: int in range(turns_value.size()):
+			var turn_value: Variant = turns_value[turn_index]
 			if not (turn_value is Dictionary):
 				continue
 			var turn: Dictionary = turn_value as Dictionary
@@ -2732,11 +2768,29 @@ func _refresh_conversation_rows() -> void:
 			speaker.custom_minimum_size.x = 170.0
 			speaker.add_theme_color_override("font_color", CreatorThemeScript.muted())
 			row.add_child(speaker)
-			var text_label: Label = Label.new()
-			text_label.text = str(turn.get("text", ""))
-			text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row.add_child(text_label)
+			var text_edit := LineEdit.new()
+			text_edit.text = str(turn.get("text", ""))
+			text_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			text_edit.text_changed.connect(_edit_conversation_text.bind(conversation_index, turn_index))
+			row.add_child(text_edit)
+			var speaker_select := OptionButton.new()
+			for character: Dictionary in model.characters:
+				speaker_select.add_item(_speaker_display_name(str(character.id)))
+				if str(character.id) == str(turn.get("speaker", "")):
+					speaker_select.select(speaker_select.item_count - 1)
+			speaker_select.item_selected.connect(_edit_conversation_speaker.bind(conversation_index, turn_index))
+			row.add_child(speaker_select)
+			var mood_select := OptionButton.new()
+			for mood_name: String in MOODS:
+				mood_select.add_item(_mood_label(mood_name))
+				if mood_name == str(turn.get("mood", "neutral")):
+					mood_select.select(mood_select.item_count - 1)
+			mood_select.item_selected.connect(_edit_conversation_mood.bind(conversation_index, turn_index))
+			row.add_child(mood_select)
+			var remove_turn := Button.new()
+			remove_turn.text = "×"
+			remove_turn.pressed.connect(_delete_conversation_turn.bind(conversation_index, turn_index))
+			row.add_child(remove_turn)
 	line_status.text = ""
 
 func _speaker_display_name(character_id: String) -> String:
@@ -2913,6 +2967,7 @@ func _sync_desktop_character_preview(mood: String = "") -> void:
 		if character_index == selected_character_index and not mood.is_empty():
 			selected_mood = mood
 		_apply_creator_sprites_to_actor(actor, character_index, selected_mood)
+	desktop_character_manager.call_deferred("_refresh_spawned_default_layout")
 
 func _apply_creator_sprites_to_actor(
 	actor: DesktopCharacterActor,
@@ -3000,11 +3055,16 @@ func _commit_line_rows() -> void:
 			"mood": mood_value
 		})
 
+	var old_default: String = str(model.characters[selected_character_index].get("profile", {}).get("default_lines", {}).get(current_line_group_id, ""))
 	model.set_line_group(
 		selected_character_index,
 		current_line_group_id,
 		lines
 	)
+	if current_line_group_id in ["menu", "exit"]:
+		var field := "menu_greeting" if current_line_group_id == "menu" else "farewell"
+		if manifest_profile_controls[field].text == old_default:
+			manifest_profile_controls[field].text = str(lines[0].text) if not lines.is_empty() else ""
 
 func _refresh_sprite_tab() -> void:
 	if model.characters.is_empty():
@@ -3615,6 +3675,7 @@ func _on_character_selected(index: int) -> void:
 
 func _on_tab_changed(_tab: int) -> void:
 	_commit_current_edits()
+	_refresh_line_rows()
 	_refresh_project_label()
 	_sync_index_tab_buttons()
 	_refresh_save_checklist()
@@ -3642,6 +3703,13 @@ func _on_dialogue_scope_selected(index: int) -> void:
 
 func _on_add_line() -> void:
 	if conversation_view:
+		var turns: Array = []
+		for character: Dictionary in model.characters:
+			turns.append({"speaker": str(character.id), "text": "", "mood": "neutral"})
+		model.conversations.append({"turns": turns})
+		_invalidate_secondary_locales()
+		model.dirty = true
+		_refresh_line_rows()
 		return
 	if line_rows.get_child_count() == 1 and line_rows.get_child(0) is Label:
 		_clear_children(line_rows)
@@ -3656,12 +3724,92 @@ func _on_delete_line(panel: PanelContainer) -> void:
 	_invalidate_secondary_locales()
 	_refresh_line_rows()
 
+func _dialogue_changed() -> void:
+	model.dirty = true
+	_invalidate_secondary_locales()
+
+func _edit_conversation_text(value: String, index: int, turn: int) -> void:
+	model.conversations[index]["turns"][turn]["text"] = value
+	_dialogue_changed()
+
+func _edit_conversation_speaker(value: int, index: int, turn: int) -> void:
+	model.conversations[index]["turns"][turn]["speaker"] = str(model.characters[value].id)
+	_dialogue_changed()
+
+func _edit_conversation_mood(value: int, index: int, turn: int) -> void:
+	model.conversations[index]["turns"][turn]["mood"] = MOODS[value]
+	_dialogue_changed()
+
+func _delete_conversation(index: int) -> void:
+	model.conversations.remove_at(index)
+	_dialogue_changed()
+	_refresh_line_rows()
+
+func _add_conversation_turn(index: int) -> void:
+	model.conversations[index]["turns"].append({"speaker": str(model.characters[0].id), "text": "", "mood": "neutral"})
+	_dialogue_changed()
+	_refresh_line_rows()
+
+func _delete_conversation_turn(index: int, turn: int) -> void:
+	model.conversations[index]["turns"].remove_at(turn)
+	_dialogue_changed()
+	_refresh_line_rows()
+
+func _confirm_clear_lines(all_groups: bool) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.dialog_text = _l("Clear all characters' dialogue and conversations?", "모든 캐릭터의 대사와 대화를 비울까요?") if all_groups else _l("Clear this dialogue group?", "현재 대사 그룹을 비울까요?")
+	dialog.confirmed.connect(func() -> void:
+		_clear_dialogue(all_groups)
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered()
+
+func _clear_dialogue(all_groups: bool) -> void:
+	_commit_current_edits()
+	if all_groups:
+		for index: int in range(model.characters.size()):
+			for group: Dictionary in model.get_line_groups(index):
+				model.set_line_group(index, str(group.id), [])
+		model.conversations.clear()
+	elif conversation_view:
+		model.conversations.clear()
+	else:
+		model.set_line_group(selected_character_index, current_line_group_id, [])
+	_dialogue_changed()
+	_refresh_manifest_form()
+	_refresh_line_rows()
+
 func _on_bulk_generate() -> void:
 	if bulk_generation_active:
 		_cancel_bulk_generation()
 		return
 	if save_pipeline_active:
 		return
+	var dialog := ConfirmationDialog.new()
+	dialog.title = _l("Choose dialogue groups", "생성할 대사 그룹 선택")
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(380, 420)
+	dialog.add_child(scroll)
+	var box := VBoxContainer.new()
+	scroll.add_child(box)
+	for group: Dictionary in model.get_line_groups(selected_character_index) + [{"id": "conversation"}]:
+		var id: String = str(group.id)
+		var choice := CheckBox.new()
+		choice.text = _l("Conversation", "대화") if id == "conversation" else _line_group_label(id)
+		choice.button_pressed = bool(generation_groups.get(id, true))
+		choice.toggled.connect(func(enabled: bool) -> void: generation_groups[id] = enabled)
+		box.add_child(choice)
+	dialog.confirmed.connect(func() -> void:
+		dialog.queue_free()
+		_begin_bulk_generate()
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered()
+
+func _begin_bulk_generate() -> void:
 	if not _commit_current_edits():
 		return
 	var missing_required: Array[String] = _collect_required_field_errors(false)
@@ -3689,11 +3837,11 @@ func _on_bulk_generate() -> void:
 	for character_index: int in range(model.characters.size()):
 		for group: Dictionary in model.get_line_groups(character_index):
 			var group_id: String = str(group.get("id", ""))
-			if model.get_line_group(character_index, group_id).is_empty():
+			if bool(generation_groups.get(group_id, true)) and model.get_line_group(character_index, group_id).is_empty():
 				missing_dialogue_characters += 1
 				break
 	bulk_generation_total_steps = profile_generation_queue.size() + missing_dialogue_characters
-	if model.characters.size() == 2 and model.conversations.is_empty():
+	if bool(generation_groups.get("conversation", true)) and model.characters.size() == 2 and model.conversations.is_empty():
 		bulk_generation_total_steps += 1
 	for language: String in model.supported_languages:
 		if language != model.default_language and not model.secondary_locales.has(language):
@@ -3711,7 +3859,7 @@ func _generate_next_bulk_profile() -> void:
 		for character_index: int in range(model.characters.size()):
 			for group: Dictionary in model.get_line_groups(character_index):
 				var group_id: String = str(group.get("id", ""))
-				if model.get_line_group(character_index, group_id).is_empty():
+				if bool(generation_groups.get(group_id, true)) and model.get_line_group(character_index, group_id).is_empty():
 					dialogue_generation_queue.append(character_index)
 					break
 		_generate_next_character_dialogue()
@@ -3732,7 +3880,7 @@ func _generate_next_character_dialogue() -> void:
 			"%d개 그룹 생성"
 		) % dialogue_generated_group_count
 		if bulk_generation_active:
-			if model.characters.size() == 2 and model.conversations.is_empty():
+			if bool(generation_groups.get("conversation", true)) and model.characters.size() == 2 and model.conversations.is_empty():
 				_set_bulk_generation_progress(_l("Generating conversation", "대화 생성 중"))
 				ai.generate_conversations(model)
 			else:
@@ -3743,11 +3891,14 @@ func _generate_next_character_dialogue() -> void:
 		_l("Generating dialogue: %s", "대사 생성 중: %s")
 		% _character_display_name(dialogue_generation_character_index)
 	)
-	ai.generate_defaults(model, dialogue_generation_character_index)
+	ai.generate_defaults(model, dialogue_generation_character_index, generation_groups)
 
 func _on_generation_finished(groups: Dictionary) -> void:
 	if not bulk_generation_active:
 		return
+	for key: Variant in groups.keys():
+		if not bool(generation_groups.get(str(key), true)):
+			groups.erase(key)
 	var applied: int = model.apply_generated_groups(
 		dialogue_generation_character_index,
 		groups

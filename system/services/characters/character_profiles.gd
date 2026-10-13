@@ -692,7 +692,15 @@ static func default_ui_line_for_profile(profile: Dictionary, key: String, langua
 		return "필요하신 게 있나요?" if key == "menu" else "다음에 또 뵐게요."
 	return "뭐 필요한 거 있어?" if key == "menu" else "또 봐."
 
+static func has_authored_ui_line(character_id: String, key: String) -> bool:
+	var profile := load_profile(character_id)
+	var custom: Dictionary = profile.get("default_lines", {})
+	return not DialogueOutput.desktop_text(custom.get(key, "")).is_empty() or not get_fallback_line(character_id, key).is_empty()
+
 static func get_default_ui_line(character_id: String, key: String) -> String:
+	var edited_lines := get_fallback_line(character_id, key)
+	if not edited_lines.is_empty():
+		return edited_lines
 	var profile := load_profile(character_id)
 	var custom: Dictionary = profile.get("default_lines", {})
 	if not str(custom.get(key, "")).strip_edges().is_empty():

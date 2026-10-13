@@ -75,6 +75,8 @@ func _build_ui() -> void:
 	for preset: Dictionary in AISettings.MODEL_PRESETS:
 		model_selector.add_item(str(preset.get("label", "")))
 		model_selector.set_item_metadata(model_selector.item_count - 1, str(preset.get("route", "")))
+	model_selector.add_item("Gemini · 모델 직접 입력")
+	model_selector.set_item_metadata(model_selector.item_count - 1, "__custom_google__")
 	model_selector.add_item("")
 	model_selector.set_item_metadata(model_selector.item_count - 1, "__custom_openrouter__")
 	model_selector.item_selected.connect(_on_model_selected)
@@ -141,12 +143,13 @@ func apply_language() -> void:
 		"AI 제공자를 선택하고 API 키를 입력하세요. 이 설정은 HaruHana와 크리에이터 도구가 함께 사용합니다."
 	)
 	model_label.text = _l("Model", "모델")
-	custom_label.text = _l("OpenRouter model ID", "OpenRouter 모델 ID")
+	custom_label.text = _l("Model ID", "모델 ID")
 	key_label.text = _l("API key", "API 키")
 	api_help_button.text = _l("How do I get an API key?", "API 키 발급 방법 · 사용 설명서")
 	cancel_button.text = _l("Cancel", "취소")
 	save_button.text = _l("Save AI settings", "AI 설정 저장")
 	if model_selector != null and model_selector.item_count > 0:
+		model_selector.set_item_text(model_selector.item_count - 2, _l("Custom Gemini model...", "Gemini 모델 직접 입력..."))
 		model_selector.set_item_text(
 			model_selector.item_count - 1,
 			_l("Custom OpenRouter model...", "OpenRouter 모델 직접 입력...")
@@ -239,7 +242,10 @@ func _select_route(route_value: String) -> void:
 			custom_model_input.text = ""
 			_update_selection()
 			return
-	if route.begins_with("openrouter::"):
+	if route.begins_with("google::") or route.begins_with("gemini::"):
+		model_selector.select(model_selector.item_count - 2)
+		custom_model_input.text = route.get_slice("::", 1)
+	elif route.begins_with("openrouter::"):
 		var custom_index := model_selector.item_count - 1
 		model_selector.select(custom_index)
 		custom_model_input.text = route.trim_prefix("openrouter::")
@@ -255,7 +261,9 @@ func _update_selection() -> void:
 	if model_selector == null or model_selector.item_count == 0:
 		return
 	var route := str(model_selector.get_item_metadata(model_selector.selected))
-	custom_model_row.visible = route == "__custom_openrouter__"
+	custom_model_row.visible = route in ["__custom_openrouter__", "__custom_google__"]
+	custom_label.text = _l("Model ID", "모델 ID")
+	custom_model_input.placeholder_text = "gemini-…" if route == "__custom_google__" else "openrouter/free"
 	var selected_route := _selected_route()
 	var provider := selected_route.get_slice("::", 0).to_lower()
 	match provider:
@@ -268,6 +276,8 @@ func _selected_route() -> String:
 	if model_selector == null or model_selector.item_count == 0:
 		return AISettings.DEFAULT_MODEL
 	var route := str(model_selector.get_item_metadata(model_selector.selected)).strip_edges()
+	if route == "__custom_google__":
+		return "google::" + custom_model_input.text.strip_edges().trim_prefix("models/")
 	if route == "__custom_openrouter__":
 		var model_id := custom_model_input.text.strip_edges()
 		if model_id.is_empty():
@@ -278,6 +288,9 @@ func _selected_route() -> String:
 	return route
 
 func _save() -> void:
+	if _selected_route().get_slice("::", 1).is_empty():
+		status_label.text = _l("Enter a model ID.", "모델 ID를 입력하세요.")
+		return
 	var error := AISettings.save_settings(api_key_input.text, _selected_route())
 	if error != OK:
 		status_label.text = _l("Could not save AI settings.", "AI 설정을 저장하지 못했습니다.")

@@ -36,11 +36,11 @@ func cancel_generation() -> void:
 	request_kind = ""
 	request_language = ""
 
-func generate_defaults(model: CreatorPackModel, character_index: int) -> void:
+func generate_defaults(model: CreatorPackModel, character_index: int, selected_groups: Dictionary = {}) -> void:
 	if not _can_start_request(character_index, model, "lines"):
 		return
 	request_kind = "lines"
-	var prompt: String = _build_line_prompt(model, character_index)
+	var prompt: String = _build_line_prompt(model, character_index, selected_groups)
 	_start_request(prompt, "Generate the editable default line groups now. Return JSON only.")
 
 func generate_profile_defaults(model: CreatorPackModel, character_index: int) -> void:
@@ -121,7 +121,7 @@ func _start_request(system_prompt: String, user_prompt: String) -> void:
 			"AI 요청을 시작할 수 없습니다."
 		)
 
-func _build_line_prompt(model: CreatorPackModel, character_index: int) -> String:
+func _build_line_prompt(model: CreatorPackModel, character_index: int, selected_groups: Dictionary = {}) -> String:
 	var character: Dictionary = model.characters[character_index]
 	var profile: Dictionary = (character.get("profile", {}) as Dictionary).duplicate(true)
 	profile.erase("birthday")
@@ -129,7 +129,7 @@ func _build_line_prompt(model: CreatorPackModel, character_index: int) -> String
 	var group_ids: Array[String] = []
 	for group: Dictionary in model.get_line_groups(character_index):
 		var group_id: String = str(group.get("id", ""))
-		if model.get_line_group(character_index, group_id).is_empty():
+		if bool(selected_groups.get(group_id, true)) and model.get_line_group(character_index, group_id).is_empty():
 			group_ids.append(group_id)
 	var context: Dictionary = {
 		"pack": {

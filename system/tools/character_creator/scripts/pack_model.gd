@@ -451,6 +451,8 @@ func get_line_groups(character_index: int) -> Array[Dictionary]:
 	var character_id := str(characters[character_index].get("id", ""))
 	return [
 		{"id": "first_boot", "label": "첫 부팅", "scope": "dialogue", "path": ["first_boot", "lines"]},
+		{"id": "menu", "label": "메뉴 첫마디", "scope": "dialogue", "path": ["fallback_dialogue", "menu"]},
+		{"id": "exit", "label": "종료 인사", "scope": "dialogue", "path": ["fallback_dialogue", "exit"]},
 		{"id": "idle", "label": "대기", "scope": "dialogue", "path": ["fallback_dialogue", "idle"]},
 		{"id": "timer_start", "label": "타이머 시작", "scope": "dialogue", "path": ["fallback_dialogue", "timer_start"]},
 		{"id": "timer_halfway", "label": "타이머 절반", "scope": "dialogue", "path": ["fallback_dialogue", "timer_halfway"]},
@@ -482,7 +484,13 @@ func get_line_group(character_index: int, group_id: String) -> Array[Dictionary]
 		if str(group.get("id", "")) != group_id:
 			continue
 		var value: Variant = _get_group_value(character_index, group)
-		return _normalize_line_array(value)
+		var lines := _normalize_line_array(value)
+		if group_id in ["menu", "exit"]:
+			var profile: Dictionary = characters[character_index].get("profile", {})
+			var text: String = str(profile.get("default_lines", {}).get(group_id, "")).strip_edges()
+			if not text.is_empty() and not lines.any(func(line: Dictionary) -> bool: return str(line.get("text", "")) == text):
+				lines.push_front({"text": text, "mood": "neutral"})
+		return lines
 	return []
 
 func set_line_group(character_index: int, group_id: String, lines: Array[Dictionary]) -> void:
@@ -490,6 +498,12 @@ func set_line_group(character_index: int, group_id: String, lines: Array[Diction
 		if str(group.get("id", "")) != group_id:
 			continue
 		_set_group_value(character_index, group, lines.duplicate(true))
+		if group_id in ["menu", "exit"]:
+			var profile: Dictionary = characters[character_index].get("profile", {})
+			var defaults: Dictionary = profile.get("default_lines", {})
+			defaults[group_id] = str(lines[0].get("text", "")) if not lines.is_empty() else ""
+			profile["default_lines"] = defaults
+			characters[character_index]["profile"] = profile
 		dirty = true
 		return
 

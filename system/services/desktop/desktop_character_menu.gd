@@ -875,7 +875,13 @@ func _load_menu_icon_texture(tab_name: String) -> Texture2D:
 	if not AppearanceSettingsScript.is_bubble_skin_valid(bubble_skin):
 		bubble_skin = AppearanceSettingsScript.DEFAULT_BUBBLE_SKIN
 
-	var icon_path: String = bubble_skin.path_join(filename)
+	for folder: String in [bubble_skin, "res://assets/bubbles/default"]:
+		var texture := _load_icon_file(folder.path_join(filename))
+		if texture != null:
+			return texture
+	return null
+
+func _load_icon_file(icon_path: String) -> Texture2D:
 
 	if icon_path.begins_with("res://") and ResourceLoader.exists(icon_path):
 		var resource: Resource = ResourceLoader.load(icon_path)

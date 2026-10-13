@@ -1772,6 +1772,26 @@ func get_random_event_for_characters(
 	if allowed_ids.is_empty():
 		return {}
 
+	# Read authored lines independently of the AI cache so pack edits take effect.
+	var authored: Array = []
+	for character_id: String in allowed_ids:
+		var line: String = CharacterProfiles.get_fallback_line(character_id, "idle")
+		if not line.is_empty():
+			authored.append({"type": "solo", "character_id": character_id, "dialogue": {"text": line, "mood": "neutral"}})
+	var seed: Dictionary = CharacterProfiles.load_pack_localized_json(CharacterProfiles.get_current_pack(), "ambient_dialogue.json")
+	var conversations: Variant = seed.get("conversations", [])
+	if conversations is Array:
+		for conversation: Variant in conversations:
+			if conversation is Dictionary:
+				var event := normalize_pool_event({"type": "conversation", "turns": conversation.get("turns", [])})
+				if not event.is_empty() and _event_is_eligible(event, allowed_ids):
+					authored.append(event)
+	if not authored.is_empty():
+		for event: Dictionary in authored:
+			if not preferred_character_id.is_empty() and _event_contains_character(event, preferred_character_id):
+				return event
+		return authored.pick_random()
+
 	var candidates: Array = []
 	var preferred_candidates: Array = []
 

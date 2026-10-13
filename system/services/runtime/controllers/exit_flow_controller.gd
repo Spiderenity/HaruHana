@@ -211,6 +211,15 @@ func _on_quit_requested() -> void:
 			_build_local_exit_dialogue()
 		)
 
+	# Explicit pack greetings take priority over prefetched AI text.
+	var authored_ids: Array[String] = []
+	for character_id: String in character_manager.get_active_character_ids():
+		if CharacterProfiles.has_authored_ui_line(character_id, "exit"):
+			authored_ids.append(character_id)
+	if not authored_ids.is_empty():
+		var speaker_id: String = authored_ids.pick_random()
+		exit_dialogue = {"speaker": speaker_id, "text": CharacterProfiles.get_default_ui_line(speaker_id, "exit"), "mood": "neutral"}
+
 	if exit_dialogue.is_empty():
 		_terminate_process()
 		return

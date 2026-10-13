@@ -147,6 +147,7 @@ var host_window_clickthrough_on_ready: bool = true
 var startup_boot_on_ready: bool = true
 var preview_visible_character_limit: int = MAX_DESKTOP_CHARACTERS
 var manual_preview_mode: bool = false
+var creator_preview_layout: bool = false
 var external_occupied_rects: Array[Rect2] = []
 var desktop_minimized: bool = false
 var focus_timer_seconds_remaining: int = 0
@@ -561,8 +562,10 @@ func reload_desktop_characters(
 	):
 		slots[1] = ""
 
-	if had_requested_character and slots.all(func(id: String) -> bool: return id.is_empty()) and CharacterProfiles.get_current_pack() == CharacterProfiles.DEFAULT_PACK_ID:
-		slots[0] = "crt"
+	# Recover empty slots written by older versions after a default-role change.
+	if slots.all(func(id: String) -> bool: return id.is_empty()) and (had_requested_character or not bool(pack_settings.get("slot_roles_migrated", false))):
+		slots = _build_default_slots(pack_settings)
+	pack_settings["slot_roles_migrated"] = true
 
 	pack_settings["slots"] = (
 		slots.duplicate()
@@ -769,11 +772,11 @@ func get_spawned_character_rects() -> Array[Rect2]:
 func get_preferred_preview_specs(limit: int = MAX_DESKTOP_CHARACTERS) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var pack_ids: Array[String] = []
-	if CharacterProfiles.pack_exists(CharacterProfiles.DEFAULT_PACK_ID):
-		pack_ids.append(CharacterProfiles.DEFAULT_PACK_ID)
 	var current_pack := CharacterProfiles.get_current_pack()
-	if not current_pack.is_empty() and not pack_ids.has(current_pack):
+	if not current_pack.is_empty():
 		pack_ids.append(current_pack)
+	if CharacterProfiles.pack_exists(CharacterProfiles.DEFAULT_PACK_ID) and not pack_ids.has(CharacterProfiles.DEFAULT_PACK_ID):
+		pack_ids.append(CharacterProfiles.DEFAULT_PACK_ID)
 	for pack_id: String in pack_ids:
 		var character_ids: Array[String] = CharacterProfiles.get_pack_character_ids(pack_id)
 		if pack_id == CharacterProfiles.DEFAULT_PACK_ID:
@@ -804,6 +807,7 @@ func get_preferred_preview_specs(limit: int = MAX_DESKTOP_CHARACTERS) -> Array[D
 	return result
 
 func spawn_preview_cast(specs: Array[Dictionary]) -> Array[DesktopCharacterActor]:
+	creator_preview_layout = true
 	clear_spawned_characters()
 	var actors: Array[DesktopCharacterActor] = []
 	for index: int in range(mini(specs.size(), MAX_DESKTOP_CHARACTERS)):
@@ -1385,17 +1389,8 @@ func is_character_allowed_in_slot(
 	if desktop.is_empty():
 		return false
 
-	var default_on_desktop: bool = bool(
-		desktop.get(
-			"default_on_desktop",
-			false
-		)
-	)
-
-	if slot_index == 0:
-		return default_on_desktop
-
-	return not default_on_desktop
+	# The flag chooses the initial order; it must not invalidate saved slots.
+	return true
 
 func get_desktop_character_diagnostic(
 	character_id: String
@@ -1458,10 +1453,15 @@ func _build_default_slots(
 		)
 	)
 
-	for slot_index: int in range(
-		MAX_DESKTOP_CHARACTERS
-	):
-		for character_id: String in character_ids:
+	var preferred: Array[String] = []
+	for character_id: String in character_ids:
+		if bool(get_desktop_config(CharacterProfiles.load_profile(character_id)).get("default_on_desktop", false)):
+			preferred.append(character_id)
+	for character_id: String in character_ids:
+		if not preferred.has(character_id):
+			preferred.append(character_id)
+	for slot_index: int in range(MAX_DESKTOP_CHARACTERS):
+		for character_id: String in preferred:
 			if result.has(
 				character_id
 			):
@@ -1599,6 +1599,8 @@ func spawn_character(
 	if pack_id.is_empty():
 		pack_id = CharacterProfiles.get_current_pack()
 	var skin_id: String = _get_saved_skin_id(character_id, pack_settings)
+	if not pack_id_override.is_empty():
+		skin_id = "default"
 
 	if not RuntimeCharacterBuilderScript.can_build(pack_id, character_id, skin_id):
 		push_error("Character has no usable runtime sprites: " + character_id)
@@ -1613,7 +1615,7 @@ func spawn_character(
 
 	actor.set_meta("preferences_pack", pack_id)
 	actor.set_meta("progress_rewards_enabled", not manual_preview_mode)
-	actor.set_meta("remember_desktop_position", host_window_clickthrough_on_ready)
+	actor.set_meta("remember_desktop_position", host_window_clickthrough_on_ready and not creator_preview_layout)
 	actor.configure_character_id(character_id)
 	actor.configure_desktop_slot(slot_index)
 	_set_initial_pair_layout(actor, reserve_pair_layout, partner_width_hint)
@@ -1710,6 +1712,9 @@ func _refresh_spawned_default_layout() -> void:
 	await get_tree().process_frame
 	while _character_window_is_priming():
 		await get_tree().process_frame
+	if creator_preview_layout:
+		_layout_preview_cast()
+		return
 
 	for actor_value: Variant in spawned_actors.values():
 		if not (actor_value is DesktopCharacterActor):
@@ -2661,3 +2666,30 @@ func save_settings(
 	settings: Dictionary
 ) -> Error:
 	return JsonStore.save_json(SETTINGS_PATH, settings)
+
+func _layout_preview_cast() -> void:
+	if DisplayServer.get_screen_count() == 0:
+		return
+	# Preview positions never write to the live character preferences.
+	var next_left: Dictionary = {}
+	for character_id: String in current_character_ids:
+		var actor: DesktopCharacterActor = get_actor(character_id)
+		if actor == null or actor.pet_interaction == null:
+			continue
+		var interaction: DesktopPetInteraction = actor.pet_interaction
+		var entry: Dictionary = DesktopPreferences.get_entry(character_id, str(actor.get_meta("preferences_pack", "")))
+		var screen: int = DisplayServer.get_primary_screen()
+		var origin: Array = entry.get("screen_origin", [])
+		if origin.size() == 2:
+			for index: int in range(DisplayServer.get_screen_count()):
+				if DisplayServer.screen_get_position(index) == Vector2i(int(origin[0]), int(origin[1])):
+					screen = index
+		var usable: Rect2i = DisplayServer.screen_get_usable_rect(screen)
+		interaction.move_to_screen(screen)
+		interaction.rebuild_alpha_hit_mask()
+		var pet: Rect2 = interaction.get_pet_rect()
+		var left: float = float(next_left.get(screen, usable.position.x + 32))
+		interaction._set_default_desktop_pet_position(left)
+		interaction.sync_handle_position()
+		interaction.sync_interaction_capture()
+		next_left[screen] = left + pet.size.x + 48.0

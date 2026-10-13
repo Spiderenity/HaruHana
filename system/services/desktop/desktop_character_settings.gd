@@ -619,7 +619,7 @@ func _refresh_monitor_selector(slot: int) -> void:
 		selector.add_item(_l("Monitor ", "모니터 ") + str(index + 1) + suffix + " · %d × %d" % [size.x, size.y])
 	var actor := manager.get_actor(get_selected_character_id(slot)) if manager != null else null
 	selector.disabled = actor == null or transition_in_progress
-	if actor != null and actor.pet_interaction != null:
+	if actor != null and actor.pet_interaction != null and selector.item_count > 0:
 		selector.select(actor.pet_interaction.get_current_screen())
 
 func _on_font_selected(index: int, slot: int) -> void:
