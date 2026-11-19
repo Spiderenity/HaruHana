@@ -31,7 +31,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Updater compilation failed' }
     Copy-Item -LiteralPath (Join-Path $project 'system/addons/windows_mouse_passthrough/bin/mouse_passthrough.windows.template_release.x86_64.dll') -Destination $stage
     Copy-Item -LiteralPath (Join-Path $project 'manual/사용 설명서.html') -Destination $stage
-    Copy-Item -LiteralPath (Join-Path $project 'docs/PATCH-0.1.11.txt') -Destination (Join-Path $stage '패치 안내.txt')
+    Copy-Item -LiteralPath (Join-Path $project 'docs/PATCH-0.1.12.txt') -Destination (Join-Path $stage '패치 안내.txt')
     New-Item -ItemType Directory -Path (Join-Path $stage 'bubbles/default'), (Join-Path $stage 'fonts') -Force | Out-Null
     Get-ChildItem (Join-Path $project 'assets/bubbles/default') -File | Where-Object {$_.Extension -ne '.import'} | Copy-Item -Destination (Join-Path $stage 'bubbles/default')
     Get-ChildItem (Join-Path $project 'fonts') -Filter *.ttf | Copy-Item -Destination (Join-Path $stage 'fonts')

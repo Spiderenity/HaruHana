@@ -3,10 +3,11 @@ config_version=5
 [application]
 
 config/name="HaruHana"
-config/version="0.1.11-beta"
+config/version="0.1.12-beta"
 run/main_scene="res://system/scenes/launch_router.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://assets/icon/icon.svg"
+run/low_processor_mode=true
 boot_splash/show_image=false
 boot_splash/bg_color=Color(0, 0, 0, 0)
 

@@ -528,10 +528,12 @@ func _sync_focus_timer_position() -> void:
 	var screen: Rect2i = get_desktop_usable_rect()
 	var target_x: int = roundi(pet_rect.get_center().x - float(focus_timer_window.size.x) / 2.0)
 	var target_y: int = roundi(pet_rect.position.y - float(focus_timer_window.size.y) - 8.0)
-	focus_timer_window.position = Vector2i(
+	var focus_timer_target := Vector2i(
 		clampi(target_x, screen.position.x, screen.end.x - focus_timer_window.size.x),
 		clampi(target_y, screen.position.y, screen.end.y - focus_timer_window.size.y)
 	)
+	if focus_timer_window.position != focus_timer_target:
+		focus_timer_window.position = focus_timer_target
 
 func _create_speech_bubble_window() -> void:
 	if speech_bubble == null:
@@ -2088,11 +2090,15 @@ func _update_speech_bubble_position() -> void:
 	)
 	var unscaled_size := Vector2(native_size) / desktop_speech_bubble_scale
 
-	speech_bubble_window.size = native_size
-	speech_bubble_window.position = Vector2i(
+	# 값이 그대로일 때 창에 다시 대입하면 매 프레임 창을 다시 그리게 된다.
+	var native_position := Vector2i(
 		roundi(target_rect.position.x),
 		roundi(target_rect.position.y)
 	)
+	if speech_bubble_window.size != native_size:
+		speech_bubble_window.size = native_size
+	if speech_bubble_window.position != native_position:
+		speech_bubble_window.position = native_position
 	speech_bubble.position = Vector2.ZERO
 	speech_bubble.scale = Vector2.ONE * desktop_speech_bubble_scale
 	speech_bubble.size = unscaled_size
@@ -2112,6 +2118,12 @@ func _update_speech_bubble_position() -> void:
 		speech_bubble_window.position
 	)
 
+func _park_speech_bubble_top_close_window() -> void:
+	if not speech_bubble_top_close_window.mouse_passthrough:
+		speech_bubble_top_close_window.mouse_passthrough = true
+	if speech_bubble_top_close_window.position != OFFSCREEN_WINDOW_POSITION:
+		speech_bubble_top_close_window.position = OFFSCREEN_WINDOW_POSITION
+
 func _update_speech_bubble_top_close_window(
 	bubble_size: Vector2i,
 	bubble_position: Vector2i
@@ -2128,8 +2140,7 @@ func _update_speech_bubble_top_close_window(
 		segmented_bubble_background == null
 		or not is_instance_valid(segmented_bubble_background)
 	):
-		speech_bubble_top_close_window.mouse_passthrough = true
-		speech_bubble_top_close_window.position = OFFSCREEN_WINDOW_POSITION
+		_park_speech_bubble_top_close_window()
 		return
 
 	var top_height: int = clampi(
@@ -2145,16 +2156,20 @@ func _update_speech_bubble_top_close_window(
 	)
 
 	if top_height <= 0:
-		speech_bubble_top_close_window.mouse_passthrough = true
-		speech_bubble_top_close_window.position = OFFSCREEN_WINDOW_POSITION
+		_park_speech_bubble_top_close_window()
 		return
 
-	speech_bubble_top_close_window.size = Vector2i(
+	# 값이 그대로일 때 창에 다시 대입하면 매 프레임 창을 다시 그리게 된다.
+	var top_close_size := Vector2i(
 		bubble_size.x,
 		top_height
 	)
-	speech_bubble_top_close_window.position = bubble_position
-	speech_bubble_top_close_window.mouse_passthrough = false
+	if speech_bubble_top_close_window.size != top_close_size:
+		speech_bubble_top_close_window.size = top_close_size
+	if speech_bubble_top_close_window.position != bubble_position:
+		speech_bubble_top_close_window.position = bubble_position
+	if speech_bubble_top_close_window.mouse_passthrough:
+		speech_bubble_top_close_window.mouse_passthrough = false
 	speech_bubble_top_close_surface.position = Vector2.ZERO
 	speech_bubble_top_close_surface.size = Vector2(
 		float(bubble_size.x),
@@ -2731,6 +2746,9 @@ func _set_bubble_content_margins(
 	margin_parent.add_theme_constant_override("margin_right", right)
 	margin_parent.add_theme_constant_override("margin_bottom", bottom)
 
+var bubble_follow_elapsed: float = 0.0
+var bubble_follow_window_position: Vector2i = Vector2i.ZERO
+
 func _process(
 	delta: float
 ) -> void:
@@ -2754,6 +2772,13 @@ func _process(
 		and speech_bubble.visible
 		and not desktop_minimized
 	):
-		_update_speech_bubble_position()
+		# 말풍선 자리 계산은 캐릭터 창이 움직였을 때 바로, 그 밖에는 0.25초에 한 번만 한다.
+		var follow_window: Window = get_window()
+		var follow_position: Vector2i = Vector2i.ZERO if follow_window == null else follow_window.position
+		bubble_follow_elapsed += maxf(0.0, delta)
+		if follow_position != bubble_follow_window_position or bubble_follow_elapsed >= 0.25:
+			bubble_follow_window_position = follow_position
+			bubble_follow_elapsed = 0.0
+			_update_speech_bubble_position()
 	if (focus_timer_active or not response_loading_sources.is_empty()) and not desktop_minimized:
 		_sync_focus_timer_position()

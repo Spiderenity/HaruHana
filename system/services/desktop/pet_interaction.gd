@@ -213,7 +213,16 @@ func apply_profile_interaction_rect() -> void:
 			hover_collision.position
 		)
 
+## 지금 팩을 알아보려면 설정 파일을 읽어야 하므로 매 프레임 하지 않고 1초에 한 번만 확인한다.
+var profile_rect_check_msec: int = -PROFILE_RECT_CHECK_INTERVAL_MSEC
+const PROFILE_RECT_CHECK_INTERVAL_MSEC: int = 1000
+
 func sync_profile_interaction_rect() -> void:
+	var now_msec: int = Time.get_ticks_msec()
+	if now_msec - profile_rect_check_msec < PROFILE_RECT_CHECK_INTERVAL_MSEC:
+		return
+	profile_rect_check_msec = now_msec
+
 	var current_character_id: String = get_character_id()
 
 	if current_character_id.is_empty():
@@ -1592,7 +1601,7 @@ func sync_handle_position() -> void:
 		)
 	)
 
-	handle_window.position = Vector2i(
+	var handle_target := Vector2i(
 		main_window.position.x
 			+ roundi(
 				local_x
@@ -1603,6 +1612,8 @@ func sync_handle_position() -> void:
 				local_y
 			)
 	)
+	if handle_window.position != handle_target:
+		handle_window.position = handle_target
 
 func is_mouse_over_handle() -> bool:
 	if handle_window == null:
@@ -1930,6 +1941,25 @@ func move_to_screen(screen: int) -> void:
 	sync_interaction_capture()
 	save_desktop_position()
 
+const IDLE_POINTER_MARGIN: int = 64
+
+## 커서가 캐릭터 창에서 멀리 있고 진행 중인 것(끌기, 통과 상태, 흐려지는 중, 손잡이)이 없으면
+## 이번 프레임에는 할 일이 없다. 매 프레임 알파 판정과 창 위치 맞추기를 되풀이하지 않는다.
+func _is_idle_far_from_pointer() -> bool:
+	if dragging or passive_hover_active or interaction_capture_active:
+		return false
+	if not fade_alpha_initialized or not is_equal_approx(fade_alpha, base_opacity):
+		return false
+	if handle_window != null and handle_window.visible:
+		return false
+	if main_window == null or not is_instance_valid(main_window):
+		return false
+	var mouse_position := DisplayServer.mouse_get_position()
+	if Rect2i(main_window.position, main_window.size).grow(IDLE_POINTER_MARGIN).has_point(mouse_position):
+		return false
+	hover_idle_elapsed = 0.0
+	return true
+
 func _process(
 	delta: float
 ) -> void:
@@ -1945,6 +1975,9 @@ func _process(
 		screen_layout_signature = layout
 
 	sync_profile_interaction_rect()
+
+	if _is_idle_far_from_pointer():
+		return
 
 	update_dragging()
 

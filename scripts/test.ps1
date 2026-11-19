@@ -18,6 +18,7 @@ try {
         $err = Join-Path $validation ($name + '-error.log')
         $arguments = @('--path', ('"' + $project + '"'), '--script', ('res://system/tests/' + $name + '.gd'))
         $process = Start-Process -FilePath $Godot -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+        $null = $process.Handle  # 없으면 Windows PowerShell 5.1에서 ExitCode가 비어 통과한 테스트도 실패로 보인다
         if (!$process.WaitForExit(45000)) {
             $process.Kill()
             throw "Test timed out: $name. Logs: $validation"

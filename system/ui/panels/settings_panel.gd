@@ -684,6 +684,8 @@ func _on_startup_program_toggled(enabled: bool) -> void:
 		"Windows 시작 프로그램 설정을 변경하지 못했습니다."
 	)
 
+const V2_BETA_URL: String = "https://github.com/Spiderenity/HaruHana/releases/tag/v2-beta"
+
 func build_update_section() -> void:
 	_add_section_header(
 		"Updates",
@@ -733,6 +735,19 @@ func build_update_section() -> void:
 	_style_secondary_label(update_status_label)
 	update_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(update_status_label)
+
+	var v2_row := HBoxContainer.new()
+	add_child(v2_row)
+	var v2_label := Label.new()
+	_bind_localized_text(v2_label, "HaruHana V2 is in beta testing.", "하루하나 V2가 베타 테스트 중이에요.")
+	v2_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v2_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	v2_row.add_child(v2_label)
+	var v2_link := LinkButton.new()
+	_bind_localized_text(v2_link, "Get the V2 beta", "V2 베타 받기")
+	v2_link.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	v2_link.pressed.connect(func() -> void: OS.shell_open(V2_BETA_URL))
+	v2_row.add_child(v2_link)
 
 	if OS.get_name() != "Windows" or OS.has_feature("editor"):
 		update_check_button.disabled = true
