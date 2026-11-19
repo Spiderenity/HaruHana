@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)][string]$Godot,
     [Parameter(Mandatory=$true)][string]$WindowsTemplate
 )

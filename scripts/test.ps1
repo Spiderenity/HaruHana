@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Godot)
+﻿param([Parameter(Mandatory=$true)][string]$Godot)
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 $workspace = Split-Path $project -Parent
